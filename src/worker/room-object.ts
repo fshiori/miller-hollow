@@ -1,0 +1,462 @@
+import {
+  applyCommand,
+  buildTimeoutCommand,
+  createGame,
+  mathRandomSource,
+  toPrivatePlayerView,
+  toPublicView,
+  type GameCommand,
+  type GamePlayer
+} from "../engine";
+import { createInitialRoomState, type RoomState } from "./room-state";
+import { createToken, hashToken } from "./tokens";
+
+const PHASE_SECONDS: Record<string, number> = {
+  night_werewolves: 45,
+  night_seer: 35,
+  night_witch: 45,
+  day_discussion: 20,
+  day_vote: 60
+};
+
+interface JoinRequest {
+  nickname?: string;
+}
+
+interface TokenRequest {
+  seatId?: string;
+  token?: string;
+}
+
+interface ClientMessage {
+  type?: string;
+  targetId?: string;
+  save?: boolean;
+  poisonTargetId?: string;
+  message?: string;
+}
+
+export class RoomObject implements DurableObject {
+  private state: DurableObjectState;
+  private sessions = new Map<WebSocket, string>();
+
+  constructor(state: DurableObjectState) {
+    this.state = state;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const roomId = this.state.id.toString();
+
+    if (request.method === "POST" && url.pathname.endsWith("/join")) {
+      return this.join(roomId, request);
+    }
+
+    if (request.method === "POST" && url.pathname.endsWith("/reconnect")) {
+      return this.reconnect(roomId, request);
+    }
+
+    if (request.method === "POST" && url.pathname.endsWith("/start")) {
+      return this.start(request);
+    }
+
+    if (request.method === "GET" && url.pathname.endsWith("/state")) {
+      const room = await this.loadRoom(roomId);
+      return json(this.publicRoomView(room));
+    }
+
+    if (request.method === "GET" && url.pathname.endsWith("/private")) {
+      return this.privateView(request);
+    }
+
+    if (request.method === "GET" && url.pathname.endsWith("/socket")) {
+      return this.openSocket(request);
+    }
+
+    return json({ error: "Not found" }, 404);
+  }
+
+  async alarm(): Promise<void> {
+    const room = await this.loadRoom(this.state.id.toString());
+    if (!room.game || room.status !== "playing" || room.game.phase === "ended") {
+      return;
+    }
+    if (!room.currentDeadlineAt || Date.now() < room.currentDeadlineAt) {
+      return;
+    }
+
+    const command: GameCommand =
+      room.game.phase === "day_discussion"
+        ? { type: "advance_to_vote" }
+        : buildTimeoutCommand(room.game, mathRandomSource);
+    room.game = applyCommand(room.game, command).state;
+    this.afterGameMutation(room);
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+  }
+
+  private async join(roomId: string, request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => ({}))) as JoinRequest;
+    const nickname = body.nickname?.trim();
+    if (!nickname) {
+      return json({ error: "Nickname is required" }, 400);
+    }
+
+    const room = await this.loadRoom(roomId);
+    if (room.status !== "lobby") {
+      return json({ error: "Game has already started" }, 409);
+    }
+    const seat = room.seats.find((candidate) => !candidate.nickname);
+    if (!seat) {
+      return json({ error: "Room is full" }, 409);
+    }
+
+    const token = createToken();
+    seat.nickname = nickname.slice(0, 32);
+    seat.connectionStatus = "connected";
+    seat.lastSeenAt = Date.now();
+    seat.playerTokenHash = await hashToken(token);
+    room.hostSeatId ??= seat.seatId;
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+
+    return json({
+      room: this.publicRoomView(room),
+      seatId: seat.seatId,
+      token
+    });
+  }
+
+  private async reconnect(roomId: string, request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => ({}))) as TokenRequest;
+    const room = await this.loadRoom(roomId);
+    const seat = await this.authenticate(room, body.seatId, body.token);
+    if (!seat) {
+      return json({ error: "Invalid reconnect token" }, 403);
+    }
+    seat.connectionStatus = "connected";
+    seat.lastSeenAt = Date.now();
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+    return json({
+      room: this.publicRoomView(room),
+      privateView: room.game ? toPrivatePlayerView(room.game, seat.seatId) : undefined,
+      seatId: seat.seatId
+    });
+  }
+
+  private async start(request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => ({}))) as TokenRequest;
+    const room = await this.loadRoom(this.state.id.toString());
+    if (room.status !== "lobby") {
+      return json({ error: "Game has already started" }, 409);
+    }
+    const host = await this.authenticate(room, body.seatId, body.token);
+    if (!host || host.seatId !== room.hostSeatId) {
+      return json({ error: "Only the host can start" }, 403);
+    }
+    if (room.seats.some((seat) => !seat.nickname)) {
+      return json({ error: "Room is not full" }, 409);
+    }
+
+    this.startGame(room);
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+    return json(this.publicRoomView(room));
+  }
+
+  private async privateView(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const room = await this.loadRoom(this.state.id.toString());
+    const seat = await this.authenticate(room, url.searchParams.get("seatId"), url.searchParams.get("token"));
+    if (!seat) {
+      return json({ error: "Invalid token" }, 403);
+    }
+    return json({
+      privateView: room.game ? toPrivatePlayerView(room.game, seat.seatId) : undefined
+    });
+  }
+
+  private async openSocket(request: Request): Promise<Response> {
+    if (request.headers.get("upgrade") !== "websocket") {
+      return json({ error: "Expected WebSocket upgrade" }, 426);
+    }
+    const url = new URL(request.url);
+    const room = await this.loadRoom(this.state.id.toString());
+    const seat = await this.authenticate(room, url.searchParams.get("seatId"), url.searchParams.get("token"));
+    if (!seat) {
+      return json({ error: "Invalid token" }, 403);
+    }
+
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    server.accept();
+    this.sessions.set(server, seat.seatId);
+    seat.connectionStatus = "connected";
+    seat.lastSeenAt = Date.now();
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+
+    server.addEventListener("message", (event) => {
+      void this.handleSocketMessage(server, String(event.data)).catch((error) => {
+        this.send(server, { type: "error", error: error instanceof Error ? error.message : "Unknown error" });
+      });
+    });
+    server.addEventListener("close", () => {
+      void this.closeSocket(server);
+    });
+    server.addEventListener("error", () => {
+      void this.closeSocket(server);
+    });
+
+    this.sendSeatViews(room, server, seat.seatId);
+    await this.broadcastRoom(room);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async handleSocketMessage(socket: WebSocket, raw: string): Promise<void> {
+    const seatId = this.sessions.get(socket);
+    if (!seatId) {
+      this.send(socket, { type: "error", error: "Unauthenticated socket" });
+      return;
+    }
+    const message = JSON.parse(raw) as ClientMessage;
+    const room = await this.loadRoom(this.state.id.toString());
+    const seat = room.seats.find((candidate) => candidate.seatId === seatId);
+    if (!seat) {
+      this.send(socket, { type: "error", error: "Unknown seat" });
+      return;
+    }
+
+    if (message.type === "ping") {
+      this.send(socket, { type: "pong" });
+      return;
+    }
+    if (message.type === "start_game") {
+      await this.startFromSocket(room, seatId);
+      return;
+    }
+    if (message.type === "day_chat") {
+      await this.addChat(room, seatId, String(message.message ?? ""));
+      return;
+    }
+    if (!room.game) {
+      this.send(socket, { type: "error", error: "Game has not started" });
+      return;
+    }
+
+    const command = this.messageToCommand(room, seatId, message);
+    room.game = applyCommand(room.game, command).state;
+    if (command.type === "submit_vote") {
+      this.resolveVoteIfComplete(room);
+    }
+    this.afterGameMutation(room);
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+  }
+
+  private async startFromSocket(room: RoomState, seatId: string): Promise<void> {
+    if (room.status !== "lobby") {
+      throw new Error("Game has already started");
+    }
+    if (room.hostSeatId !== seatId) {
+      throw new Error("Only the host can start");
+    }
+    if (room.seats.some((seat) => !seat.nickname)) {
+      throw new Error("Room is not full");
+    }
+    this.startGame(room);
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+  }
+
+  private startGame(room: RoomState): void {
+    const players: GamePlayer[] = room.seats.map((seat) => ({
+      id: seat.seatId,
+      nickname: seat.nickname as string
+    }));
+    room.game = createGame(players, mathRandomSource);
+    room.status = "playing";
+    this.afterGameMutation(room);
+  }
+
+  private messageToCommand(room: RoomState, seatId: string, message: ClientMessage): GameCommand {
+    const game = room.game;
+    if (!game) {
+      throw new Error("Game has not started");
+    }
+    if (message.type === "night_action") {
+      if (game.phase === "night_werewolves") {
+        if (!message.targetId) throw new Error("Target is required");
+        return { type: "submit_werewolf_target", actorId: seatId, targetId: message.targetId };
+      }
+      if (game.phase === "night_seer") {
+        return { type: "submit_seer_target", actorId: seatId, ...(message.targetId ? { targetId: message.targetId } : {}) };
+      }
+      if (game.phase === "night_witch") {
+        return {
+          type: "submit_witch_action",
+          actorId: seatId,
+          ...(message.save && game.nightActions.werewolfTarget ? { saveTargetId: game.nightActions.werewolfTarget } : {}),
+          ...(message.poisonTargetId ? { poisonTargetId: message.poisonTargetId } : {})
+        };
+      }
+    }
+    if (message.type === "vote") {
+      return { type: "submit_vote", actorId: seatId, targetId: message.targetId ?? "abstain" };
+    }
+    throw new Error("Unsupported message type");
+  }
+
+  private async addChat(room: RoomState, seatId: string, message: string): Promise<void> {
+    if (!room.game || room.game.phase !== "day_discussion") {
+      throw new Error("Day chat is only available during discussion");
+    }
+    if (!room.game.alive[seatId]) {
+      throw new Error("Dead players cannot send day chat");
+    }
+    const text = message.trim();
+    if (!text) {
+      return;
+    }
+    const seat = room.seats.find((candidate) => candidate.seatId === seatId);
+    room.chatMessages.push({
+      id: `${Date.now()}-${room.chatMessages.length}`,
+      seatId,
+      nickname: seat?.nickname ?? seatId,
+      message: text.slice(0, 240),
+      createdAt: Date.now()
+    });
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+  }
+
+  private async closeSocket(socket: WebSocket): Promise<void> {
+    const seatId = this.sessions.get(socket);
+    this.sessions.delete(socket);
+    if (!seatId) {
+      return;
+    }
+    if ([...this.sessions.values()].includes(seatId)) {
+      return;
+    }
+    const room = await this.loadRoom(this.state.id.toString());
+    const seat = room.seats.find((candidate) => candidate.seatId === seatId);
+    if (seat) {
+      seat.connectionStatus = "disconnected";
+      seat.lastSeenAt = Date.now();
+      room.updatedAt = Date.now();
+      await this.saveRoom(room);
+      await this.broadcastRoom(room);
+    }
+  }
+
+  private afterGameMutation(room: RoomState): void {
+    if (!room.game || room.game.phase === "ended") {
+      room.status = room.game?.phase === "ended" ? "ended" : room.status;
+      delete room.currentDeadlineAt;
+    } else {
+      const seconds = PHASE_SECONDS[room.game.phase] ?? 60;
+      room.currentDeadlineAt = Date.now() + seconds * 1000;
+      void this.state.storage.setAlarm(room.currentDeadlineAt);
+    }
+    room.updatedAt = Date.now();
+  }
+
+  private resolveVoteIfComplete(room: RoomState): void {
+    if (!room.game || room.game.phase !== "day_vote") {
+      return;
+    }
+    const livingPlayerIds = room.game.players.filter((player) => room.game?.alive[player.id]).map((player) => player.id);
+    const allVoted = livingPlayerIds.every((playerId) => room.game?.votes[playerId]);
+    if (allVoted) {
+      room.game = applyCommand(room.game, { type: "resolve_vote", missingVotesAsAbstain: true }).state;
+    }
+  }
+
+  private async authenticate(room: RoomState, seatId: string | null | undefined, token: string | null | undefined) {
+    if (!seatId || !token) {
+      return undefined;
+    }
+    const seat = room.seats.find((candidate) => candidate.seatId === seatId);
+    if (!seat?.playerTokenHash) {
+      return undefined;
+    }
+    return (await hashToken(token)) === seat.playerTokenHash ? seat : undefined;
+  }
+
+  private async loadRoom(roomId: string): Promise<RoomState> {
+    const stored = await this.state.storage.get<RoomState>("room");
+    if (stored) {
+      stored.chatMessages ??= [];
+      return stored;
+    }
+    const room = createInitialRoomState(roomId, Date.now());
+    await this.saveRoom(room);
+    return room;
+  }
+
+  private async saveRoom(room: RoomState): Promise<void> {
+    await this.state.storage.put("room", room);
+  }
+
+  private async broadcastRoom(room: RoomState): Promise<void> {
+    for (const [socket, seatId] of this.sessions) {
+      this.sendSeatViews(room, socket, seatId);
+    }
+  }
+
+  private sendSeatViews(room: RoomState, socket: WebSocket, seatId: string): void {
+    this.send(socket, { type: "room_view", room: this.publicRoomView(room) });
+    if (room.game) {
+      this.send(socket, {
+        type: "private_view",
+        privateView: toPrivatePlayerView(room.game, seatId)
+      });
+    }
+  }
+
+  private send(socket: WebSocket, payload: unknown): void {
+    try {
+      socket.send(JSON.stringify(payload));
+    } catch {
+      this.sessions.delete(socket);
+    }
+  }
+
+  private publicRoomView(room: RoomState) {
+    return {
+      roomId: room.roomId,
+      status: room.status,
+      settings: room.settings,
+      hostSeatId: room.hostSeatId,
+      seats: room.seats.map((seat) => ({
+        seatId: seat.seatId,
+        nickname: seat.nickname,
+        controller: seat.controller,
+        connectionStatus: seat.connectionStatus,
+        lastSeenAt: seat.lastSeenAt
+      })),
+      game: room.game ? toPublicView(room.game) : undefined,
+      chatMessages: room.chatMessages,
+      currentDeadlineAt: room.currentDeadlineAt,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt
+    };
+  }
+}
+
+function json(data: unknown, status = 200): Response {
+  return Response.json(data, {
+    status,
+    headers: {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET,POST,OPTIONS",
+      "access-control-allow-headers": "content-type"
+    }
+  });
+}

@@ -1,0 +1,26 @@
+{
+  "name": "miller-hollow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev": "wrangler dev",
+    "smoke:browser": "node scripts/browser-smoke-v1.mjs",
+    "smoke:v1": "node scripts/smoke-v1.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "preview": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "vite": "^7.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260511.1",
+    "@playwright/test": "^1.60.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6",
+    "wrangler": "^4.90.1"
+  }
+}
