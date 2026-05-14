@@ -84,8 +84,9 @@ async function boot(): Promise<void> {
 function render(): void {
   if (!session) {
     app.innerHTML = `
-      <main class="shell narrow">
+      <main class="shell narrow auth-screen">
         <header class="masthead">
+          <div class="eyebrow">Hidden-role table</div>
           <h1>Miller Hollow</h1>
           <p>8 players, hidden roles, one moderated room.</p>
         </header>
@@ -113,9 +114,10 @@ function render(): void {
   const phase = game?.phase ?? "Lobby";
   const playerById = new Map(game?.players.map((player) => [player.id, player]) ?? []);
   app.innerHTML = `
-    <main class="shell">
+    <main class="shell game-screen phase-${escapeHtml(String(game?.phase ?? "lobby"))}">
       <header class="topbar">
         <div>
+          <div class="eyebrow">Live room</div>
           <h1>Miller Hollow</h1>
           <p>Room <code data-testid="room-id">${escapeHtml(session.roomId)}</code></p>
         </div>
@@ -139,7 +141,7 @@ function render(): void {
                   return `
                     <div class="seat${host}${mine}">
                       <strong>${escapeHtml(seat.nickname ?? "Open")}</strong>
-                      <span>${escapeHtml(seat.seatId)} · ${escapeHtml(seat.connectionStatus)}</span>
+                      <span><i class="status-dot ${escapeHtml(seat.connectionStatus)}"></i>${escapeHtml(seat.seatId)} · ${escapeHtml(seat.connectionStatus)}</span>
                       ${player ? `<span>${player.alive ? "Alive" : "Dead"}${player.role ? ` · ${escapeHtml(player.role)}` : ""}</span>` : ""}
                     </div>
                   `;
@@ -164,7 +166,7 @@ function render(): void {
               </div>
               <div>
                 <div data-testid="phase" class="phase-chip">${escapeHtml(String(phase))}</div>
-                <div id="timer" class="timer">${formatDeadline(room?.currentDeadlineAt)}</div>
+                <div id="timer" class="timer">${formatDeadline(room?.currentDeadlineAt) || "--"}</div>
               </div>
             </div>
             ${renderActionPanel()}

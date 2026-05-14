@@ -45,10 +45,16 @@ interface ClientMessage {
   message?: string;
 }
 
+interface RateBucket {
+  count: number;
+  resetAt: number;
+}
+
 export class RoomObject implements DurableObject {
   private state: DurableObjectState;
   private env: Env;
   private sessions = new Map<WebSocket, string>();
+  private rateBuckets = new Map<string, RateBucket>();
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
@@ -201,6 +207,9 @@ export class RoomObject implements DurableObject {
     if (!seat) {
       return json({ error: "Invalid token" }, 403);
     }
+    if (!this.takeRateLimit(`ticket:${seat.seatId}`, 20, 60_000)) {
+      return json({ error: "Too many socket tickets. Try again soon." }, 429);
+    }
 
     const ticket = createToken();
     const ticketHash = await hashToken(ticket);
@@ -271,6 +280,10 @@ export class RoomObject implements DurableObject {
 
     if (message.type === "ping") {
       this.send(socket, { type: "pong" });
+      return;
+    }
+    if (!this.takeRateLimit(`action:${seatId}`, 60, 60_000)) {
+      this.send(socket, { type: "error", error: "Too many actions. Try again soon." });
       return;
     }
     if (message.type === "start_game") {
@@ -360,6 +373,9 @@ export class RoomObject implements DurableObject {
     if (!text) {
       return;
     }
+    if (!this.takeRateLimit(`chat:${seatId}`, 12, 60_000)) {
+      throw new Error("Too many chat messages. Try again soon.");
+    }
     const seat = room.seats.find((candidate) => candidate.seatId === seatId);
     room.chatMessages.push({
       id: `${Date.now()}-${room.chatMessages.length}`,
@@ -407,6 +423,28 @@ export class RoomObject implements DurableObject {
 
   private phaseSeconds(): Record<string, number> {
     return this.env.MILLER_HOLLOW_TIMER_PROFILE === "smoke" ? SMOKE_PHASE_SECONDS : PRODUCTION_PHASE_SECONDS;
+  }
+
+  private takeRateLimit(key: string, limit: number, windowMs: number): boolean {
+    const now = Date.now();
+    const existing = this.rateBuckets.get(key);
+    if (!existing || existing.resetAt <= now) {
+      this.rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+      this.pruneRateBuckets(now);
+      return true;
+    }
+    if (existing.count >= limit) {
+      return false;
+    }
+    existing.count += 1;
+    return true;
+  }
+
+  private pruneRateBuckets(now: number): void {
+    if (this.rateBuckets.size < 512) return;
+    for (const [key, bucket] of this.rateBuckets) {
+      if (bucket.resetAt <= now) this.rateBuckets.delete(key);
+    }
   }
 
   private resolveVoteIfComplete(room: RoomState): void {

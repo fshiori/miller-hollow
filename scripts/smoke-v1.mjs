@@ -18,6 +18,9 @@ server.stderr.on("data", (chunk) => {
 
 try {
   await waitForReady();
+  const health = await get("/api/health");
+  assert(health.ok === true, "health endpoint did not return ok");
+  assert(health.storage === "durable_object_sqlite", "health endpoint returned unexpected storage");
   const room = await post("/api/rooms");
   const joined = [];
   for (let index = 1; index <= 8; index += 1) {

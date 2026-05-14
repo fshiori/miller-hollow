@@ -2,6 +2,8 @@
 
 First playable V1 implementation for an 8-player online Werewolves of Miller's Hollow room on Cloudflare Workers and Durable Objects.
 
+This is an unofficial fan implementation and is not affiliated with the original game publisher or rights holders.
+
 ## Commands
 
 - `npm run dev` starts Wrangler locally at `http://localhost:8787`.
@@ -10,6 +12,7 @@ First playable V1 implementation for an 8-player online Werewolves of Miller's H
 - `npm run build` builds the browser assets and typechecks the Worker.
 - `npm run smoke:v1` starts Wrangler and exercises room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, WebSocket night actions, day chat, timer-driven vote start, and vote resolution.
 - `npm run smoke:browser` starts Wrangler and drives 8 isolated Chromium browser contexts through create, join, start, night actions, day chat, timer-driven vote start, and voting.
+- `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev`.
 - `npm run deploy:dry-run` validates the Worker bundle and Cloudflare configuration without publishing.
 - `npm run secrets:check` scans tracked files for common accidentally committed secret patterns.
 
@@ -29,6 +32,8 @@ Rooms use anonymous nicknames and browser-held reconnect tokens. The server stor
 - Durable Object class: `RoomObject`
 - Default timer profile: `MILLER_HOLLOW_TIMER_PROFILE = "production"`
 
+V1 uses Cloudflare Workers, Workers Static Assets, and one SQLite-backed Durable Object class for room/game storage. It does not require D1, KV, R2, Queues, or a separate database service.
+
 Before deploy, run:
 
 ```bash
@@ -38,6 +43,7 @@ npm test
 npm run build
 npm run smoke:v1
 npm run smoke:browser
+npm run smoke:remote
 npm run secrets:check
 npm run deploy:dry-run
 ```
