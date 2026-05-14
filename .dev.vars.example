@@ -1,0 +1,3 @@
+# Copy to .dev.vars if you need local Worker vars for wrangler dev.
+# Do not put Cloudflare API tokens here.
+MILLER_HOLLOW_TIMER_PROFILE=production

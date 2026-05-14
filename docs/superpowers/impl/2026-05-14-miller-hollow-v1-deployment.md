@@ -28,6 +28,7 @@ npm test
 npm run build
 npm run smoke:v1
 npm run smoke:browser
+npm run secrets:check
 npm run deploy:dry-run
 ```
 
@@ -38,6 +39,7 @@ Expected results:
 - Browser assets build into `dist/client`.
 - API/WebSocket smoke passes.
 - 8-context browser smoke passes.
+- Secret scan reports no obvious secrets in tracked files.
 - Wrangler dry-run completes without publishing.
 
 ## First Deploy
@@ -45,6 +47,15 @@ Expected results:
 Deploy with:
 
 ```bash
+npm run deploy
+```
+
+If you keep Cloudflare credentials in local ignored files, load them before deploy:
+
+```bash
+set -a
+source .env.local
+set +a
 npm run deploy
 ```
 

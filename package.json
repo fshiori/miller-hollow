@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "preview": "wrangler dev",
     "deploy": "wrangler deploy",
-    "deploy:dry-run": "wrangler deploy --dry-run"
+    "deploy:dry-run": "wrangler deploy --dry-run",
+    "secrets:check": "node scripts/check-no-secrets.mjs"
   },
   "dependencies": {
     "vite": "^7.0.0"

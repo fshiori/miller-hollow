@@ -11,6 +11,7 @@ First playable V1 implementation for an 8-player online Werewolves of Miller's H
 - `npm run smoke:v1` starts Wrangler and exercises room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, WebSocket night actions, day chat, timer-driven vote start, and vote resolution.
 - `npm run smoke:browser` starts Wrangler and drives 8 isolated Chromium browser contexts through create, join, start, night actions, day chat, timer-driven vote start, and voting.
 - `npm run deploy:dry-run` validates the Worker bundle and Cloudflare configuration without publishing.
+- `npm run secrets:check` scans tracked files for common accidentally committed secret patterns.
 
 ## V1 Scope
 
@@ -37,6 +38,7 @@ npm test
 npm run build
 npm run smoke:v1
 npm run smoke:browser
+npm run secrets:check
 npm run deploy:dry-run
 ```
 
@@ -45,6 +47,8 @@ Then deploy with:
 ```bash
 npm run deploy
 ```
+
+For local Cloudflare credentials, copy `.env.example` to `.env.local` and keep `.env.local` untracked. See `docs/superpowers/impl/2026-05-14-miller-hollow-v1-secrets.md`.
 
 ## Security Notes
 
