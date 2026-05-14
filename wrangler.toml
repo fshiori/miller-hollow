@@ -2,6 +2,9 @@ name = "miller-hollow"
 main = "src/worker/index.ts"
 compatibility_date = "2026-05-14"
 
+[vars]
+MILLER_HOLLOW_TIMER_PROFILE = "production"
+
 [assets]
 directory = "dist/client"
 binding = "ASSETS"

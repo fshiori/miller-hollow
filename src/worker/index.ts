@@ -25,7 +25,7 @@ export default {
       return Response.json({ roomId: id.toString(), joinUrl });
     }
 
-    const roomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/(join|reconnect|start|state|private|socket)$/);
+    const roomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/(join|reconnect|start|state|private|socket-ticket|socket)$/);
     if (roomMatch) {
       const roomId = roomMatch[1];
       const action = roomMatch[2];

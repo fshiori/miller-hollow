@@ -23,9 +23,15 @@ export interface RoomState {
   hostSeatId?: string;
   game?: GameState;
   chatMessages: ChatMessage[];
+  socketTickets: Record<string, SocketTicket>;
   currentDeadlineAt?: number;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface SocketTicket {
+  seatId: string;
+  expiresAt: number;
 }
 
 export interface ChatMessage {
@@ -50,6 +56,7 @@ export function createInitialRoomState(roomId: string, now: number): RoomState {
       connectionStatus: "disconnected"
     })),
     chatMessages: [],
+    socketTickets: {},
     createdAt: now,
     updatedAt: now
   };

@@ -382,9 +382,20 @@ function openSocket(): void {
   if (!session || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
   connectionStatus = connectionStatus === "connected" ? "reconnecting" : "connecting";
   renderSoon();
+  void openSocketWithTicket().catch((error) => {
+    connectionStatus = "reconnecting";
+    statusMessage = error instanceof Error ? error.message : "Could not open connection.";
+    render();
+    window.setTimeout(() => openSocket(), 1500);
+  });
+}
+
+async function openSocketWithTicket(): Promise<void> {
+  if (!session) return;
+  const ticket = await createSocketTicket(session);
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   socket = new WebSocket(
-    `${protocol}//${location.host}/api/rooms/${session.roomId}/socket?seatId=${encodeURIComponent(session.seatId)}&token=${encodeURIComponent(session.token)}`
+    `${protocol}//${location.host}/api/rooms/${session.roomId}/socket?ticket=${encodeURIComponent(ticket)}`
   );
   socket.addEventListener("message", (event) => {
     const payload = JSON.parse(String(event.data)) as {
@@ -422,6 +433,19 @@ function openSocket(): void {
     statusMessage = "Connection error. Retrying...";
     render();
   });
+}
+
+async function createSocketTicket(value: Session): Promise<string> {
+  const response = await fetch(`/api/rooms/${value.roomId}/socket-ticket`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ seatId: value.seatId, token: value.token })
+  });
+  const payload = (await response.json()) as { ticket?: string; error?: string };
+  if (!response.ok || !payload.ticket) {
+    throw new Error(payload.error ?? "Could not create socket ticket");
+  }
+  return payload.ticket;
 }
 
 function send(message: Record<string, unknown>): void {

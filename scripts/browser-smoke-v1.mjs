@@ -3,7 +3,7 @@ import { chromium } from "@playwright/test";
 
 const base = "http://localhost:8787";
 
-const server = spawn("./node_modules/.bin/wrangler", ["dev"], {
+const server = spawn("./node_modules/.bin/wrangler", ["dev", "--var", "MILLER_HOLLOW_TIMER_PROFILE:smoke"], {
   detached: true,
   stdio: ["ignore", "pipe", "pipe"]
 });

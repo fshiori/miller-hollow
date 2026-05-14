@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 const base = "http://localhost:8787";
 const wsBase = "ws://localhost:8787";
 
-const server = spawn("./node_modules/.bin/wrangler", ["dev"], {
+const server = spawn("./node_modules/.bin/wrangler", ["dev", "--var", "MILLER_HOLLOW_TIMER_PROFILE:smoke"], {
   detached: true,
   stdio: ["ignore", "pipe", "pipe"]
 });
@@ -28,6 +28,10 @@ try {
     seatId: joined[0].seatId,
     token: "invalid-token"
   });
+  await expectHttpError(`/api/rooms/${room.roomId}/socket-ticket`, 403, {
+    seatId: joined[0].seatId,
+    token: "invalid-token"
+  });
   await expectHttpError(`/api/rooms/${room.roomId}/private?seatId=${joined[0].seatId}&token=invalid-token`, 403);
 
   const reconnected = await post(`/api/rooms/${room.roomId}/reconnect`, {
@@ -49,6 +53,7 @@ try {
   const startedState = await get(`/api/rooms/${room.roomId}/state`);
   assert(!publicStateHasRoles(startedState), "public state leaked roles before endgame");
   assert(!JSON.stringify(startedState).includes("playerTokenHash"), "public state leaked token hashes");
+  assert(!JSON.stringify(startedState).includes("socketTickets"), "public state leaked socket tickets");
   assert(!JSON.stringify(startedState).includes('"privateView"'), "public state leaked private views");
 
   const wolfIndex = privates.findIndex((view) => view.role === "werewolf");
@@ -153,7 +158,8 @@ async function livingSessions(roomId, joined) {
 }
 
 async function socketSend(roomId, player, message, expectedPhase) {
-  const socket = new WebSocket(`${wsBase}/api/rooms/${roomId}/socket?seatId=${player.seatId}&token=${player.token}`);
+  const ticket = await socketTicket(roomId, player);
+  const socket = new WebSocket(`${wsBase}/api/rooms/${roomId}/socket?ticket=${ticket}`);
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`socket timeout for ${JSON.stringify(message)}`)), 10_000);
     socket.addEventListener("open", () => {
@@ -181,7 +187,8 @@ async function socketSend(roomId, player, message, expectedPhase) {
 }
 
 async function expectSocketError(roomId, player, message) {
-  const socket = new WebSocket(`${wsBase}/api/rooms/${roomId}/socket?seatId=${player.seatId}&token=${player.token}`);
+  const ticket = await socketTicket(roomId, player);
+  const socket = new WebSocket(`${wsBase}/api/rooms/${roomId}/socket?ticket=${ticket}`);
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error(`expected socket error for ${JSON.stringify(message)}`)), 10_000);
     socket.addEventListener("open", () => {
@@ -197,6 +204,15 @@ async function expectSocketError(roomId, player, message) {
     });
     socket.addEventListener("error", reject);
   });
+}
+
+async function socketTicket(roomId, player) {
+  const payload = await post(`/api/rooms/${roomId}/socket-ticket`, {
+    seatId: player.seatId,
+    token: player.token
+  });
+  assert(payload.ticket, "socket ticket was not returned");
+  return payload.ticket;
 }
 
 async function waitForPhase(roomId, phase, timeoutMs) {

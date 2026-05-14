@@ -10,8 +10,17 @@ import {
 } from "../engine";
 import { createInitialRoomState, type RoomState } from "./room-state";
 import { createToken, hashToken } from "./tokens";
+import type { Env } from "./env";
 
-const PHASE_SECONDS: Record<string, number> = {
+const PRODUCTION_PHASE_SECONDS: Record<string, number> = {
+  night_werewolves: 90,
+  night_seer: 60,
+  night_witch: 90,
+  day_discussion: 300,
+  day_vote: 90
+};
+
+const SMOKE_PHASE_SECONDS: Record<string, number> = {
   night_werewolves: 45,
   night_seer: 35,
   night_witch: 45,
@@ -38,10 +47,12 @@ interface ClientMessage {
 
 export class RoomObject implements DurableObject {
   private state: DurableObjectState;
+  private env: Env;
   private sessions = new Map<WebSocket, string>();
 
-  constructor(state: DurableObjectState) {
+  constructor(state: DurableObjectState, env: Env) {
     this.state = state;
+    this.env = env;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -58,6 +69,10 @@ export class RoomObject implements DurableObject {
 
     if (request.method === "POST" && url.pathname.endsWith("/start")) {
       return this.start(request);
+    }
+
+    if (request.method === "POST" && url.pathname.endsWith("/socket-ticket")) {
+      return this.createSocketTicket(request);
     }
 
     if (request.method === "GET" && url.pathname.endsWith("/state")) {
@@ -179,15 +194,38 @@ export class RoomObject implements DurableObject {
     });
   }
 
+  private async createSocketTicket(request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => ({}))) as TokenRequest;
+    const room = await this.loadRoom(this.state.id.toString());
+    const seat = await this.authenticate(room, body.seatId, body.token);
+    if (!seat) {
+      return json({ error: "Invalid token" }, 403);
+    }
+
+    const ticket = createToken();
+    const ticketHash = await hashToken(ticket);
+    this.pruneExpiredSocketTickets(room);
+    room.socketTickets[ticketHash] = {
+      seatId: seat.seatId,
+      expiresAt: Date.now() + 30_000
+    };
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    return json({
+      ticket,
+      expiresAt: room.socketTickets[ticketHash]?.expiresAt
+    });
+  }
+
   private async openSocket(request: Request): Promise<Response> {
     if (request.headers.get("upgrade") !== "websocket") {
       return json({ error: "Expected WebSocket upgrade" }, 426);
     }
     const url = new URL(request.url);
     const room = await this.loadRoom(this.state.id.toString());
-    const seat = await this.authenticate(room, url.searchParams.get("seatId"), url.searchParams.get("token"));
+    const seat = await this.authenticateSocketTicket(room, url.searchParams.get("ticket"));
     if (!seat) {
-      return json({ error: "Invalid token" }, 403);
+      return json({ error: "Invalid or expired socket ticket" }, 403);
     }
 
     const pair = new WebSocketPair();
@@ -360,11 +398,15 @@ export class RoomObject implements DurableObject {
       room.status = room.game?.phase === "ended" ? "ended" : room.status;
       delete room.currentDeadlineAt;
     } else {
-      const seconds = PHASE_SECONDS[room.game.phase] ?? 60;
+      const seconds = this.phaseSeconds()[room.game.phase] ?? 60;
       room.currentDeadlineAt = Date.now() + seconds * 1000;
       void this.state.storage.setAlarm(room.currentDeadlineAt);
     }
     room.updatedAt = Date.now();
+  }
+
+  private phaseSeconds(): Record<string, number> {
+    return this.env.MILLER_HOLLOW_TIMER_PROFILE === "smoke" ? SMOKE_PHASE_SECONDS : PRODUCTION_PHASE_SECONDS;
   }
 
   private resolveVoteIfComplete(room: RoomState): void {
@@ -389,10 +431,37 @@ export class RoomObject implements DurableObject {
     return (await hashToken(token)) === seat.playerTokenHash ? seat : undefined;
   }
 
+  private async authenticateSocketTicket(room: RoomState, ticket: string | null | undefined) {
+    if (!ticket) {
+      return undefined;
+    }
+    this.pruneExpiredSocketTickets(room);
+    const ticketHash = await hashToken(ticket);
+    const socketTicket = room.socketTickets[ticketHash];
+    if (!socketTicket) {
+      return undefined;
+    }
+    delete room.socketTickets[ticketHash];
+    if (Date.now() > socketTicket.expiresAt) {
+      return undefined;
+    }
+    return room.seats.find((candidate) => candidate.seatId === socketTicket.seatId);
+  }
+
+  private pruneExpiredSocketTickets(room: RoomState): void {
+    const now = Date.now();
+    for (const [ticketHash, ticket] of Object.entries(room.socketTickets)) {
+      if (ticket.expiresAt <= now) {
+        delete room.socketTickets[ticketHash];
+      }
+    }
+  }
+
   private async loadRoom(roomId: string): Promise<RoomState> {
     const stored = await this.state.storage.get<RoomState>("room");
     if (stored) {
       stored.chatMessages ??= [];
+      stored.socketTickets ??= {};
       return stored;
     }
     const room = createInitialRoomState(roomId, Date.now());

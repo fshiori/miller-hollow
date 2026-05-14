@@ -16,6 +16,8 @@ Initial playable V1 implementation.
 - API/WebSocket smoke test via `npm run smoke:v1`.
 - 8-browser-context UI smoke test via `npm run smoke:browser`.
 - V1 design, implementation, hardening, and rule-decision documentation.
+- Short-lived single-use WebSocket tickets.
+- Production and smoke timer profiles.
 
 ### V1 Decisions
 
@@ -28,7 +30,6 @@ Initial playable V1 implementation.
 
 ### Known Follow-Ups
 
-- Replace WebSocket query-string tokens with short-lived socket tickets.
 - Add rate limiting for room creation and message submission.
 - Add deployment observability with explicit hidden-state redaction.
 - Extend browser coverage with responsive screenshots and explicit disconnect/reconnect UI assertions.

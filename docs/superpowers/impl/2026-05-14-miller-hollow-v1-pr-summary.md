@@ -43,6 +43,7 @@ npm test
 npm run build
 npm run smoke:v1
 npm run smoke:browser
+npm run deploy:dry-run
 ```
 
 Current verified result:
@@ -52,6 +53,7 @@ Current verified result:
 - `npm run build`: pass
 - `npm run smoke:v1`: pass
 - `npm run smoke:browser`: pass
+- `npm run deploy:dry-run`: pass
 
 ## Review Notes
 
@@ -60,4 +62,4 @@ Current verified result:
 - Public room state omits `playerTokenHash` and private views.
 - Public game state omits player roles until endgame.
 - WebSocket messages cannot trigger moderator-only vote resolution; vote resolution happens when all living players vote or when the Durable Object alarm fires.
-- V1 uses WebSocket query-string tokens for simplicity. The hardening follow-up is short-lived socket tickets.
+- WebSockets use short-lived single-use tickets issued by `POST /api/rooms/:roomId/socket-ticket`.
