@@ -318,6 +318,7 @@ function render(): void {
   `;
   bindRoomActions();
   startTimerLoop();
+  scrollFollowLogs();
 }
 
 function renderSpectator(): void {
@@ -397,6 +398,7 @@ function renderSpectator(): void {
     </main>
   `;
   startTimerLoop();
+  scrollFollowLogs();
 }
 
 function renderStartButton(): string {
@@ -1044,4 +1046,12 @@ function startTimerLoop(): void {
     const timer = document.querySelector<HTMLDivElement>("#timer");
     if (timer) timer.textContent = formatDeadline(room?.currentDeadlineAt);
   }, 500);
+}
+
+function scrollFollowLogs(): void {
+  window.requestAnimationFrame(() => {
+    document.querySelectorAll<HTMLElement>(".chat-log, .event-log").forEach((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+  });
 }
