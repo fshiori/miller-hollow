@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.8 - Host Observer Mode
+
+### Added
+
+- Host-authenticated `/room/:roomId/host-watch` observer route.
+- Host-only observer ticket, observer state, and observer WebSocket APIs.
+- Read-only host observer UI for roles, Werewolf chat, proposed target, readiness, votes, public timeline, and day chat.
+- API and browser smoke coverage for host observer access and public spectator hidden-info boundaries.
+- V4.8 design and implementation documents.
+
+### Changed
+
+- App version reports `0.4.8`.
+- README and rules docs now distinguish public spectator mode from host observer mode.
+
 ## 0.4.7 - Werewolf Discussion And Phase Readiness
 
 ### Added

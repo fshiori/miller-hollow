@@ -275,6 +275,10 @@ code {
   align-items: start;
 }
 
+.observer-layout {
+  grid-template-columns: minmax(340px, 430px) 1fr;
+}
+
 .sidebar,
 .main-column {
   display: grid;
@@ -456,6 +460,24 @@ code {
   gap: 12px;
 }
 
+.observer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.observer-grid section,
+.observer-list {
+  display: grid;
+  gap: 10px;
+}
+
+.observer-grid h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
 .compact-heading h3 {
   margin: 0;
   font-size: 16px;
@@ -633,6 +655,10 @@ label {
   }
 
   .inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .observer-grid {
     grid-template-columns: 1fr;
   }
 }

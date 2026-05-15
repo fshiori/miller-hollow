@@ -81,6 +81,12 @@ try {
   await assertLocalizedRoles(pages);
   await waitForAnyPagePhase([spectatorPage], "night_werewolves");
   assert((await spectatorPage.getByTestId("role").count()) === 0, "spectator rendered a private role");
+  const observerPage = await contexts[0].newPage();
+  await observerPage.goto(`${base}/room/${roomId}/host-watch`);
+  await observerPage.locator("body").filter({ hasText: "主持觀戰" }).waitFor();
+  await observerPage.locator("body").filter({ hasText: "主持人可見隱藏資訊" }).waitFor();
+  await observerPage.locator("body").filter({ hasText: "狼人" }).waitFor();
+  await observerPage.locator("body").filter({ hasText: "預言家" }).waitFor();
 
   const roleBeforeReload = (await pages[0].getByTestId("role").textContent())?.trim();
   await pages[0].reload();
@@ -98,6 +104,7 @@ try {
   await werewolfPages[0].locator('#werewolf-chat-form input[name="message"]').fill(wolfMessage);
   await werewolfPages[0].locator('#werewolf-chat-form button[type="submit"]').click();
   await werewolfPages[1].locator("body").filter({ hasText: wolfMessage }).waitFor({ timeout: 10_000 });
+  await observerPage.locator("body").filter({ hasText: wolfMessage }).waitFor({ timeout: 10_000 });
   assert((await nonWerewolfPage.locator("body").filter({ hasText: wolfMessage }).count()) === 0, "Werewolf chat leaked to non-Werewolf page");
   assert((await spectatorPage.locator("body").filter({ hasText: wolfMessage }).count()) === 0, "Werewolf chat leaked to spectator page");
   await submitSelectForm(werewolfPages[0], "#werewolf-target-form");
@@ -129,7 +136,7 @@ try {
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V4.7 smoke passed");
+  console.log("Browser V4.8 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {

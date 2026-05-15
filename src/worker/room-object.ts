@@ -75,6 +75,7 @@ export class RoomObject implements DurableObject {
   private env: Env;
   private sessions = new Map<WebSocket, string>();
   private spectatorSessions = new Set<WebSocket>();
+  private observerSessions = new Set<WebSocket>();
   private rateBuckets = new Map<string, RateBucket>();
 
   constructor(state: DurableObjectState, env: Env) {
@@ -110,6 +111,10 @@ export class RoomObject implements DurableObject {
       return this.createSpectatorTicket();
     }
 
+    if (request.method === "POST" && url.pathname.endsWith("/observer-ticket")) {
+      return this.createObserverTicket(request);
+    }
+
     if (request.method === "POST" && url.pathname.includes("/host/")) {
       return this.hostControl(request);
     }
@@ -127,6 +132,10 @@ export class RoomObject implements DurableObject {
       return this.privateView(request);
     }
 
+    if (request.method === "GET" && url.pathname.endsWith("/observer-state")) {
+      return this.observerState(request);
+    }
+
     if (request.method === "GET" && url.pathname.endsWith("/diagnostics")) {
       return this.diagnostics(request);
     }
@@ -137,6 +146,10 @@ export class RoomObject implements DurableObject {
 
     if (request.method === "GET" && url.pathname.endsWith("/spectator-socket")) {
       return this.openSpectatorSocket(request);
+    }
+
+    if (request.method === "GET" && url.pathname.endsWith("/observer-socket")) {
+      return this.openObserverSocket(request);
     }
 
     return json({ error: "Not found" }, 404);
@@ -267,6 +280,8 @@ export class RoomObject implements DurableObject {
       } else if (action === "transfer") {
         this.assertLobby(room);
         this.transferHost(room, body.targetSeatId);
+        room.observerTickets = {};
+        this.disconnectObservers("Host changed. Host observer closed.");
       } else if (action === "advance-phase") {
         this.advancePhase(room);
         this.afterGameMutation(room);
@@ -324,6 +339,8 @@ export class RoomObject implements DurableObject {
     room.phaseInteraction = createPhaseInteraction();
     room.socketTickets = {};
     room.spectatorTickets = {};
+    room.observerTickets = {};
+    this.disconnectObservers("Room reset by host");
     for (const seat of room.seats) {
       seat.ready = false;
       delete seat.readyAt;
@@ -348,6 +365,18 @@ export class RoomObject implements DurableObject {
     });
   }
 
+  private async observerState(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const room = await this.loadRoom(this.state.id.toString());
+    const host = await this.authenticateHost(room, url.searchParams.get("seatId"), url.searchParams.get("token"));
+    if (!host) {
+      return json({ error: "Only the host can open host observer" }, 403);
+    }
+    return json({
+      room: this.observerRoomView(room)
+    });
+  }
+
   private async diagnostics(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const room = await this.loadRoom(this.state.id.toString());
@@ -366,6 +395,7 @@ export class RoomObject implements DurableObject {
       connectedSeats: room.seats.filter((candidate) => candidate.connectionStatus === "connected").length,
       activeSockets: this.sessions.size,
       activeSpectators: this.spectatorSessions.size,
+      activeObservers: this.observerSessions.size,
       pendingSocketTickets: Object.keys(room.socketTickets).length,
       chatMessages: room.chatMessages.length,
       settings: {
@@ -424,6 +454,31 @@ export class RoomObject implements DurableObject {
     return json({
       ticket,
       expiresAt: room.spectatorTickets[ticketHash]?.expiresAt
+    });
+  }
+
+  private async createObserverTicket(request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => ({}))) as TokenRequest;
+    const room = await this.loadRoom(this.state.id.toString());
+    const host = await this.authenticateHost(room, body.seatId, body.token);
+    if (!host) {
+      return json({ error: "Only the host can open host observer" }, 403);
+    }
+    if (!this.takeRateLimit(`observer-ticket:${host.seatId}`, 20, 60_000)) {
+      return json({ error: "Too many observer tickets. Try again soon." }, 429);
+    }
+
+    const ticket = createToken();
+    const ticketHash = await hashToken(ticket);
+    this.pruneExpiredObserverTickets(room);
+    room.observerTickets[ticketHash] = {
+      expiresAt: Date.now() + 30_000
+    };
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    return json({
+      ticket,
+      expiresAt: room.observerTickets[ticketHash]?.expiresAt
     });
   }
 
@@ -502,6 +557,44 @@ export class RoomObject implements DurableObject {
     });
 
     this.send(server, { type: "room_view", room: this.publicRoomView(room) });
+    await this.broadcastRoom(room);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async openObserverSocket(request: Request): Promise<Response> {
+    if (request.headers.get("upgrade") !== "websocket") {
+      return json({ error: "Expected WebSocket upgrade" }, 426);
+    }
+    const url = new URL(request.url);
+    const room = await this.loadRoom(this.state.id.toString());
+    const ok = await this.authenticateObserverTicket(room, url.searchParams.get("ticket"));
+    if (!ok) {
+      return json({ error: "Invalid or expired observer ticket" }, 403);
+    }
+
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    server.accept();
+    this.observerSessions.add(server);
+    await this.saveRoom(room);
+
+    server.addEventListener("message", (event) => {
+      const message = JSON.parse(String(event.data)) as ClientMessage;
+      if (message.type === "ping") {
+        this.send(server, { type: "pong" });
+      } else {
+        this.send(server, { type: "error", error: "Host observers cannot act" });
+      }
+    });
+    server.addEventListener("close", () => {
+      this.observerSessions.delete(server);
+    });
+    server.addEventListener("error", () => {
+      this.observerSessions.delete(server);
+    });
+
+    this.send(server, { type: "observer_view", room: this.observerRoomView(room) });
     await this.broadcastRoom(room);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -668,6 +761,8 @@ export class RoomObject implements DurableObject {
     room.phaseInteraction = createPhaseInteraction();
     room.socketTickets = {};
     room.spectatorTickets = {};
+    room.observerTickets = {};
+    this.disconnectObservers("Lobby reset by host");
     for (const seat of room.seats) {
       if (seat.seatId !== room.hostSeatId) {
         this.closePlayerSockets(seat.seatId, "Lobby reset by host");
@@ -1042,6 +1137,20 @@ export class RoomObject implements DurableObject {
     return Date.now() <= spectatorTicket.expiresAt;
   }
 
+  private async authenticateObserverTicket(room: RoomState, ticket: string | null | undefined): Promise<boolean> {
+    if (!ticket) {
+      return false;
+    }
+    this.pruneExpiredObserverTickets(room);
+    const ticketHash = await hashToken(ticket);
+    const observerTicket = room.observerTickets[ticketHash];
+    if (!observerTicket) {
+      return false;
+    }
+    delete room.observerTickets[ticketHash];
+    return Date.now() <= observerTicket.expiresAt;
+  }
+
   private pruneExpiredSocketTickets(room: RoomState): void {
     const now = Date.now();
     for (const [ticketHash, ticket] of Object.entries(room.socketTickets)) {
@@ -1056,6 +1165,15 @@ export class RoomObject implements DurableObject {
     for (const [ticketHash, ticket] of Object.entries(room.spectatorTickets)) {
       if (ticket.expiresAt <= now) {
         delete room.spectatorTickets[ticketHash];
+      }
+    }
+  }
+
+  private pruneExpiredObserverTickets(room: RoomState): void {
+    const now = Date.now();
+    for (const [ticketHash, ticket] of Object.entries(room.observerTickets)) {
+      if (ticket.expiresAt <= now) {
+        delete room.observerTickets[ticketHash];
       }
     }
   }
@@ -1083,6 +1201,9 @@ export class RoomObject implements DurableObject {
     for (const socket of this.spectatorSessions) {
       this.send(socket, { type: "room_view", room: this.publicRoomView(room) });
     }
+    for (const socket of this.observerSessions) {
+      this.send(socket, { type: "observer_view", room: this.observerRoomView(room) });
+    }
   }
 
   private sendSeatViews(room: RoomState, socket: WebSocket, seatId: string): void {
@@ -1101,6 +1222,7 @@ export class RoomObject implements DurableObject {
     } catch {
       this.sessions.delete(socket);
       this.spectatorSessions.delete(socket);
+      this.observerSessions.delete(socket);
     }
   }
 
@@ -1120,6 +1242,14 @@ export class RoomObject implements DurableObject {
       socket.close();
     }
     this.spectatorSessions.clear();
+  }
+
+  private disconnectObservers(reason: string): void {
+    for (const socket of this.observerSessions) {
+      this.send(socket, { type: "error", error: reason });
+      socket.close();
+    }
+    this.observerSessions.clear();
   }
 
   private publicRoomView(room: RoomState) {
@@ -1148,6 +1278,59 @@ export class RoomObject implements DurableObject {
       updatedAt: room.updatedAt,
       activeSpectators: this.spectatorSessions.size
     };
+  }
+
+  private observerRoomView(room: RoomState) {
+    const publicView = this.publicRoomView(room);
+    const game = room.game;
+    const livingPlayerIds = game?.players.filter((player) => game.alive[player.id]).map((player) => player.id) ?? [];
+    const votes = game?.phase === "day_vote" ? game.votes : {};
+    return {
+      ...publicView,
+      activeObservers: this.observerSessions.size,
+      observer: {
+        players:
+          game?.players.map((player) => ({
+            id: player.id,
+            nickname: player.nickname,
+            role: game.roles[player.id],
+            alive: game.alive[player.id] ?? false,
+            connectionStatus: room.seats.find((seat) => seat.seatId === player.id)?.connectionStatus ?? "disconnected",
+            isHost: player.id === room.hostSeatId
+          })) ?? [],
+        phaseInteraction: {
+          phase: room.phaseInteraction.phase,
+          werewolfChat: room.phaseInteraction.werewolfChat,
+          werewolfTargetId: room.phaseInteraction.werewolfTargetId,
+          werewolfReadySeatIds: room.phaseInteraction.werewolfReadySeatIds,
+          dayReadySeatIds: room.phaseInteraction.dayReadySeatIds
+        },
+        nightActions: game
+          ? {
+              werewolfTarget: game.nightActions.werewolfTarget,
+              witchSavedTarget: game.nightActions.witchSavedTarget,
+              witchPoisonTarget: game.nightActions.witchPoisonTarget
+            }
+          : undefined,
+        seerResults: game?.nightActions.seerViews ?? {},
+        witch: game
+          ? {
+              saveAvailable: game.witchSaveAvailable,
+              poisonAvailable: game.witchPoisonAvailable
+            }
+          : undefined,
+        votes,
+        missingVoterIds: game?.phase === "day_vote" ? livingPlayerIds.filter((playerId) => !votes[playerId]) : [],
+        voteTally: this.voteTally(votes)
+      }
+    };
+  }
+
+  private voteTally(votes: Record<string, string>): Record<string, number> {
+    return Object.values(votes).reduce<Record<string, number>>((counts, targetId) => {
+      counts[targetId] = (counts[targetId] ?? 0) + 1;
+      return counts;
+    }, {});
   }
 
   private startEligibility(room: RoomState) {

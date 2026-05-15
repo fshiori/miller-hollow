@@ -32,6 +32,7 @@ export interface RoomState {
   phaseInteraction: PhaseInteractionState;
   socketTickets: Record<string, SocketTicket>;
   spectatorTickets: Record<string, SpectatorTicket>;
+  observerTickets: Record<string, ObserverTicket>;
   currentDeadlineAt?: number;
   createdAt: number;
   updatedAt: number;
@@ -43,6 +44,10 @@ export interface SocketTicket {
 }
 
 export interface SpectatorTicket {
+  expiresAt: number;
+}
+
+export interface ObserverTicket {
   expiresAt: number;
 }
 
@@ -86,6 +91,7 @@ export function createInitialRoomState(roomId: string, now: number): RoomState {
     phaseInteraction: createPhaseInteraction(),
     socketTickets: {},
     spectatorTickets: {},
+    observerTickets: {},
     createdAt: now,
     updatedAt: now
   };
@@ -113,6 +119,7 @@ export function normalizeRoomState(room: RoomState): RoomState {
   room.phaseInteraction = normalizePhaseInteraction(room.phaseInteraction, room.game?.phase);
   room.socketTickets ??= {};
   room.spectatorTickets ??= {};
+  room.observerTickets ??= {};
   room.seats = normalizeSeats(room.seats ?? [], preset.playerCount);
   for (const seat of room.seats) {
     seat.controller ??= "human";

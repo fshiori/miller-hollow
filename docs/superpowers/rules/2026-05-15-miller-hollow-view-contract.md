@@ -55,3 +55,29 @@ Spectators must never receive:
 - Token hashes.
 - Private role data before endgame.
 - Action controls.
+
+## Host Observer View
+
+Host observers receive privileged read-only observer views.
+
+May include:
+
+- Public room view fields.
+- Roles before endgame.
+- Werewolf private chat.
+- Werewolf proposed target and ready seat ids.
+- Day ready seat ids.
+- Vote map, missing voters, and vote tally during day vote.
+- Seer results and night action summary.
+- Witch potion state for app-basic rooms.
+
+Must not include:
+
+- Player reconnect tokens.
+- Token hashes.
+- Socket ticket values or hashes.
+- Spectator ticket values or hashes.
+- Observer ticket values or hashes.
+- Durable Object storage internals.
+
+Host observer sockets must not accept player actions.

@@ -142,6 +142,15 @@ try {
   assert(!JSON.stringify(startedState).includes('"privateView"'), "public state leaked private views");
   assert(!startedState.game.endgameReveal, "public state revealed endgame before game ended");
   await expectSpectatorPublicOnly(room.roomId);
+  await expectHttpError(`/api/rooms/${room.roomId}/observer-ticket`, 403, {
+    seatId: joined[1].seatId,
+    token: joined[1].token
+  });
+  let observer = await observerState(room.roomId, joined[0]);
+  assert(observer.observer?.players?.some((player) => player.role === "werewolf"), "observer state did not reveal roles to host");
+  assert(!JSON.stringify(observer).includes("playerTokenHash"), "observer state leaked token hashes");
+  assert(!JSON.stringify(observer).includes("socketTickets"), "observer state leaked socket tickets");
+  await expectObserverSocket(room.roomId, joined[0]);
 
   const wolfIndexes = privates.map((view, index) => (view.role === "werewolf" ? index : -1)).filter((index) => index >= 0);
   const wolfIndex = wolfIndexes[0];
@@ -170,6 +179,8 @@ try {
   let publicState = await get(`/api/rooms/${room.roomId}/state`);
   assert(!JSON.stringify(publicState).includes(wolfMessage), "public state leaked werewolf chat");
   await expectSpectatorPublicOnly(room.roomId, wolfMessage);
+  observer = await observerState(room.roomId, joined[0]);
+  assert(JSON.stringify(observer).includes(wolfMessage), "observer state did not include werewolf chat");
 
   const wolfTarget = privates[wolfIndex].legalTargets[0];
   await socketSend(room.roomId, joined[wolfIndex], { type: "propose_werewolf_target", targetId: wolfTarget }, undefined);
@@ -199,12 +210,17 @@ try {
   }
   await waitForPhase(room.roomId, "day_vote", 5_000);
   const target = (await get(`/api/rooms/${room.roomId}/state`)).game.players.find((player) => player.alive).id;
-  for (const player of await livingSessions(room.roomId, joined)) {
+  const votingPlayers = await livingSessions(room.roomId, joined);
+  await socketSend(room.roomId, votingPlayers[0], { type: "vote", targetId: target }, undefined);
+  observer = await observerState(room.roomId, joined[0]);
+  assert(Object.keys(observer.observer?.votes ?? {}).length >= 1, "observer state did not include vote map");
+  assert(!JSON.stringify(await get(`/api/rooms/${room.roomId}/state`)).includes('"votes"'), "public state leaked vote map");
+  for (const player of votingPlayers.slice(1)) {
     await socketSend(room.roomId, player, { type: "vote", targetId: target }, undefined);
   }
   await waitForNotPhase(room.roomId, "day_vote", 5_000);
   assert(!publicStateHasRoles(await get(`/api/rooms/${room.roomId}/state`)), "public state leaked roles after non-end vote");
-  console.log("V4.7 smoke passed");
+  console.log("V4.8 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");
@@ -379,6 +395,43 @@ async function expectSpectatorPublicOnly(roomId, forbiddenText) {
         socket.send(JSON.stringify({ type: "night_action" }));
       }
       if (sawRoomView && payload.type === "error") {
+        clearTimeout(timeout);
+        socket.close();
+        resolve();
+      }
+    });
+    socket.addEventListener("error", reject);
+  });
+}
+
+async function observerState(roomId, player) {
+  const payload = await get(`/api/rooms/${roomId}/observer-state?seatId=${player.seatId}&token=${player.token}`);
+  return payload.room;
+}
+
+async function expectObserverSocket(roomId, player) {
+  const ticketPayload = await post(`/api/rooms/${roomId}/observer-ticket`, {
+    seatId: player.seatId,
+    token: player.token
+  });
+  assert(ticketPayload.ticket, "observer ticket was not returned");
+  const socket = new WebSocket(`${wsBase}/api/rooms/${roomId}/observer-socket?ticket=${ticketPayload.ticket}`);
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("expected observer view")), 10_000);
+    let sawObserverView = false;
+    socket.addEventListener("message", (event) => {
+      const payload = JSON.parse(String(event.data));
+      if (payload.type === "observer_view") {
+        const body = JSON.stringify(payload);
+        if (!body.includes('"observer"') || body.includes("playerTokenHash") || body.includes("socketTickets")) {
+          clearTimeout(timeout);
+          reject(new Error("observer view missing hidden state or leaked auth state"));
+          return;
+        }
+        sawObserverView = true;
+        socket.send(JSON.stringify({ type: "vote", targetId: "abstain" }));
+      }
+      if (sawObserverView && payload.type === "error") {
         clearTimeout(timeout);
         socket.close();
         resolve();

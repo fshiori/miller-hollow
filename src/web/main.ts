@@ -94,6 +94,40 @@ interface RoomView {
   activeSpectators?: number;
 }
 
+interface ObserverRoomView extends RoomView {
+  activeObservers?: number;
+  observer?: {
+    players: Array<{
+      id: string;
+      nickname: string;
+      role?: string;
+      alive: boolean;
+      connectionStatus: "connected" | "disconnected";
+      isHost: boolean;
+    }>;
+    phaseInteraction: {
+      phase?: Phase;
+      werewolfChat: { id: string; seatId: string; nickname: string; message: string; createdAt: number }[];
+      werewolfTargetId?: string;
+      werewolfReadySeatIds: string[];
+      dayReadySeatIds: string[];
+    };
+    nightActions?: {
+      werewolfTarget?: string;
+      witchSavedTarget?: string;
+      witchPoisonTarget?: string;
+    };
+    seerResults: Record<string, string>;
+    witch?: {
+      saveAvailable: boolean;
+      poisonAvailable: boolean;
+    };
+    votes: Record<string, string>;
+    missingVoterIds: string[];
+    voteTally: Record<string, number>;
+  };
+}
+
 interface PrivateView {
   playerId: string;
   role: string;
@@ -141,17 +175,22 @@ let privateView: PrivateView | undefined;
 let session = loadSession();
 let socket: WebSocket | undefined;
 let spectatorSocket: WebSocket | undefined;
+let observerSocket: WebSocket | undefined;
 let timerHandle: number | undefined;
 let connectionStatus: "offline" | "connecting" | "connected" | "reconnecting" = session ? "connecting" : "offline";
 let statusMessage = "";
 const roomIdFromPath = location.pathname.match(/^\/room\/([^/]+)$/)?.[1] ?? "";
 const spectatorRoomId = location.pathname.match(/^\/room\/([^/]+)\/watch$/)?.[1] ?? "";
+const hostObserverRoomId = location.pathname.match(/^\/room\/([^/]+)\/host-watch$/)?.[1] ?? "";
 const watching = Boolean(spectatorRoomId);
+const hostObserving = Boolean(hostObserverRoomId);
 
 void boot();
 
 async function boot(): Promise<void> {
-  if (watching) {
+  if (hostObserving) {
+    await openHostObserver();
+  } else if (watching) {
     await openSpectator();
   } else if (session) {
     await reconnect();
@@ -161,6 +200,10 @@ async function boot(): Promise<void> {
 }
 
 function render(): void {
+  if (hostObserving) {
+    renderHostObserver();
+    return;
+  }
   if (watching) {
     renderSpectator();
     return;
@@ -401,6 +444,173 @@ function renderSpectator(): void {
   scrollFollowLogs();
 }
 
+function renderHostObserver(): void {
+  const observerRoom = room as ObserverRoomView | undefined;
+  const seats = observerRoom?.seats ?? [];
+  const game = observerRoom?.game;
+  const phase = game?.phase ?? "lobby";
+  const observer = observerRoom?.observer;
+  if (!session || session.roomId !== hostObserverRoomId) {
+    app.innerHTML = `
+      <main class="shell narrow auth-screen">
+        <section class="panel auth-panel">
+          <h1>主持觀戰</h1>
+          <p>只有房主可以開啟主持觀戰。請先用房主身分進入房間。</p>
+          <a class="button-link" href="/room/${escapeHtml(hostObserverRoomId)}">回到房間</a>
+        </section>
+      </main>
+    `;
+    return;
+  }
+  app.innerHTML = `
+    <main class="shell game-screen observer-screen phase-${escapeHtml(String(phase))}">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">主持觀戰</div>
+          <h1>米勒山谷</h1>
+          <p>房間 <code data-testid="room-id">${escapeHtml(hostObserverRoomId)}</code></p>
+        </div>
+        <div class="top-actions">
+          ${renderRoomMeta()}
+          <div class="status-pill">${escapeHtml(labelConnection(connectionStatus))}</div>
+          <a class="button-link secondary" href="/room/${escapeHtml(hostObserverRoomId)}">回到房間</a>
+          <button id="observer-copy-watch-link-button" class="secondary" type="button">公開觀戰連結</button>
+        </div>
+      </header>
+      ${statusMessage ? `<div class="banner">${escapeHtml(statusMessage)}</div>` : ""}
+      <section class="layout observer-layout">
+        <aside class="sidebar">
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>玩家與角色</h2>
+              <span>${observer?.players.length ?? seats.filter((seat) => seat.nickname).length}</span>
+            </div>
+            <div class="seat-list table-grid">
+              ${(observer?.players ?? [])
+                .map(
+                  (player) => `
+                    <div class="seat ${player.isHost ? "host" : ""}${player.alive ? "" : " dead"}">
+                      <div class="seat-main">
+                        <strong>${escapeHtml(player.nickname)}</strong>
+                        <span><i class="status-dot ${escapeHtml(player.connectionStatus)}"></i>${escapeHtml(player.id)} · ${escapeHtml(labelConnection(player.connectionStatus))}${player.isHost ? " · 房主" : ""}</span>
+                      </div>
+                      <span class="seat-state">${player.alive ? "存活" : "死亡"} · ${escapeHtml(labelRole(player.role))}</span>
+                    </div>
+                  `
+                )
+                .join("") || `<p class="muted">等待遊戲開始。</p>`}
+            </div>
+          </section>
+        </aside>
+        <section class="main-column">
+          <section class="panel phase-panel">
+            <div class="phase-row">
+              <div>
+                <h2>${escapeHtml(labelPhase(game?.phase))}</h2>
+                <p>${game ? `第 ${game.round} 輪 · 主持人可見隱藏資訊` : "等待房間開始"}</p>
+              </div>
+              <div>
+                <div data-testid="phase" class="phase-chip">${escapeHtml(labelPhase(String(phase)))}</div>
+                ${observerRoom?.currentDeadlineAt ? `<div id="timer" class="timer">${formatDeadline(observerRoom.currentDeadlineAt)}</div>` : ""}
+              </div>
+            </div>
+            ${renderObserverPhasePanel(observerRoom)}
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>白天聊天</h2>
+              <span>${(observerRoom?.chatMessages ?? []).length}</span>
+            </div>
+            <div class="chat-log">
+              ${(observerRoom?.chatMessages ?? [])
+                .slice(-40)
+                .map((message) => `<p><strong>${escapeHtml(message.nickname)}</strong> ${escapeHtml(message.message)}</p>`)
+                .join("") || `<p class="muted">目前沒有白天訊息。</p>`}
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>系統紀錄</h2>
+              <span>${(game?.publicEvents ?? []).length}</span>
+            </div>
+            <div class="event-log">
+              ${(game?.publicEvents ?? [])
+                .slice(-24)
+                .map((event) => `<p>${escapeHtml(localizeEvent(event.message))}</p>`)
+                .join("") || `<p class="muted">等待玩家加入。</p>`}
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+  `;
+  bindHostObserverActions();
+  startTimerLoop();
+  scrollFollowLogs();
+}
+
+function renderObserverPhasePanel(observerRoom: ObserverRoomView | undefined): string {
+  const observer = observerRoom?.observer;
+  const phase = observerRoom?.game?.phase;
+  if (!observer || !phase) {
+    return `<p class="muted">等待遊戲開始後顯示主持觀戰資訊。</p>`;
+  }
+  if (phase === "night_werewolves") {
+    const target = observer.phaseInteraction.werewolfTargetId;
+    return `
+      <div class="observer-grid">
+        <section>
+          <h3>狼人討論</h3>
+          <div class="chat-log private-chat">
+            ${observer.phaseInteraction.werewolfChat
+              .slice(-16)
+              .map((message) => `<p><strong>${escapeHtml(message.nickname)}</strong> ${escapeHtml(message.message)}</p>`)
+              .join("") || `<p class="muted">還沒有狼人訊息。</p>`}
+          </div>
+        </section>
+        <section>
+          <h3>狼人目標</h3>
+          <p>提議目標：<strong>${target ? escapeHtml(observerNameFor(target)) : "尚未提議"}</strong></p>
+          <p>已確認：${observer.phaseInteraction.werewolfReadySeatIds.map(observerNameFor).map(escapeHtml).join("、") || "無"}</p>
+        </section>
+      </div>
+    `;
+  }
+  if (phase === "night_seer") {
+    const seer = observer.players.find((player) => player.role === "seer" && player.alive);
+    return `<div class="observer-grid"><section><h3>預言家夜晚</h3><p>預言家：<strong>${seer ? escapeHtml(seer.nickname) : "無存活預言家"}</strong></p><p>查驗紀錄：${Object.entries(observer.seerResults).map(([id, role]) => `${observerNameFor(id)} ${labelRole(role)}`).map(escapeHtml).join("、") || "尚無"}</p></section></div>`;
+  }
+  if (phase === "night_witch") {
+    return `<div class="observer-grid"><section><h3>女巫夜晚</h3><p>狼人目標：<strong>${observer.nightActions?.werewolfTarget ? escapeHtml(observerNameFor(observer.nightActions.werewolfTarget)) : "無"}</strong></p><p>解藥：${observer.witch?.saveAvailable ? "可用" : "已用"} · 毒藥：${observer.witch?.poisonAvailable ? "可用" : "已用"}</p></section></div>`;
+  }
+  if (phase === "day_discussion") {
+    const ready = observer.phaseInteraction.dayReadySeatIds;
+    const missing = observer.players.filter((player) => player.alive && !ready.includes(player.id));
+    return `<div class="observer-grid"><section><h3>白天準備</h3><p>已準備：${ready.map(observerNameFor).map(escapeHtml).join("、") || "無"}</p><p>未準備：${missing.map((player) => escapeHtml(player.nickname)).join("、") || "無"}</p></section></div>`;
+  }
+  if (phase === "day_vote") {
+    return `
+      <div class="observer-grid">
+        <section>
+          <h3>投票明細</h3>
+          <div class="observer-list">
+            ${Object.entries(observer.votes)
+              .map(([voterId, targetId]) => `<p><strong>${escapeHtml(observerNameFor(voterId))}</strong> → ${escapeHtml(targetId === "abstain" ? "棄票" : observerNameFor(targetId))}</p>`)
+              .join("") || `<p class="muted">尚未有人投票。</p>`}
+          </div>
+        </section>
+        <section>
+          <h3>未投票</h3>
+          <p>${observer.missingVoterIds.map(observerNameFor).map(escapeHtml).join("、") || "無"}</p>
+          <h3>目前票數</h3>
+          <p>${Object.entries(observer.voteTally).map(([targetId, count]) => `${targetId === "abstain" ? "棄票" : observerNameFor(targetId)} ${count}`).map(escapeHtml).join("、") || "無"}</p>
+        </section>
+      </div>
+    `;
+  }
+  return `<p class="muted">遊戲結束。角色已公開。</p>`;
+}
+
 function renderStartButton(): string {
   if (!session || !room || room.status !== "lobby" || session.seatId !== room.hostSeatId) return "";
   const eligibility = room.startEligibility;
@@ -439,6 +649,7 @@ function renderHostTools(): string {
       <div class="tool-row">
         <button id="copy-link-button" class="secondary" type="button">複製連結</button>
         <button id="copy-watch-link-button" class="secondary" type="button">觀戰連結</button>
+        <a class="button-link secondary" href="/room/${escapeHtml(session.roomId)}/host-watch">主持觀戰</a>
         <button id="diagnostics-button" class="secondary" type="button">診斷資訊</button>
         <button id="lock-button" class="secondary" type="button">${room.settings.locked ? "解鎖" : "鎖定"}</button>
         <button id="spectators-button" class="secondary" type="button">${room.settings.spectatorsEnabled ? "關閉觀戰" : "開放觀戰"}</button>
@@ -751,6 +962,12 @@ function bindRoomActions(): void {
   });
 }
 
+function bindHostObserverActions(): void {
+  document.querySelector<HTMLButtonElement>("#observer-copy-watch-link-button")?.addEventListener("click", () => {
+    void copyWatchLinkForRoom(hostObserverRoomId);
+  });
+}
+
 async function joinRoom(roomId: string, nickname: string): Promise<void> {
   const response = await fetch(`/api/rooms/${encodeURIComponent(roomId.trim())}/join`, {
     method: "POST",
@@ -843,6 +1060,61 @@ async function openSpectator(): Promise<void> {
   }
 }
 
+async function openHostObserver(): Promise<void> {
+  if (!session || session.roomId !== hostObserverRoomId) {
+    connectionStatus = "offline";
+    statusMessage = localizeError("Only the host can open host observer");
+    render();
+    return;
+  }
+  connectionStatus = "connecting";
+  render();
+  try {
+    const initial = await fetch(
+      `/api/rooms/${hostObserverRoomId}/observer-state?seatId=${encodeURIComponent(session.seatId)}&token=${encodeURIComponent(session.token)}`
+    );
+    const initialPayload = (await initial.json()) as { room?: ObserverRoomView; error?: string };
+    if (!initial.ok || !initialPayload.room) {
+      throw new Error(initialPayload.error ?? "Only the host can open host observer");
+    }
+    room = initialPayload.room;
+    const ticket = await createObserverTicket(session);
+    const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+    observerSocket = new WebSocket(
+      `${protocol}//${location.host}/api/rooms/${hostObserverRoomId}/observer-socket?ticket=${encodeURIComponent(ticket)}`
+    );
+    observerSocket.addEventListener("message", (event) => {
+      const payload = JSON.parse(String(event.data)) as { type: string; room?: ObserverRoomView; error?: string };
+      if (payload.type === "error") {
+        statusMessage = localizeError(payload.error ?? "Observer connection rejected.");
+        render();
+        return;
+      }
+      if (payload.type === "observer_view" && payload.room) {
+        room = payload.room;
+        connectionStatus = "connected";
+        statusMessage = "";
+        render();
+      }
+    });
+    observerSocket.addEventListener("close", () => {
+      connectionStatus = "reconnecting";
+      statusMessage = localizeError("Connection lost. Reconnecting...");
+      render();
+      window.setTimeout(() => void openHostObserver(), 1500);
+    });
+    observerSocket.addEventListener("error", () => {
+      connectionStatus = "reconnecting";
+      statusMessage = localizeError("Connection error. Retrying...");
+      render();
+    });
+  } catch (error) {
+    connectionStatus = "offline";
+    statusMessage = localizeError(error instanceof Error ? error.message : "Could not open host observer.");
+    render();
+  }
+}
+
 async function openSocketWithTicket(): Promise<void> {
   if (!session) return;
   const ticket = await createSocketTicket(session);
@@ -908,6 +1180,19 @@ async function createSpectatorTicket(roomId: string): Promise<string> {
   const payload = (await response.json()) as { ticket?: string; error?: string };
   if (!response.ok || !payload.ticket) {
     throw new Error(localizeError(payload.error ?? "Could not create spectator ticket"));
+  }
+  return payload.ticket;
+}
+
+async function createObserverTicket(value: Session): Promise<string> {
+  const response = await fetch(`/api/rooms/${value.roomId}/observer-ticket`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ seatId: value.seatId, token: value.token })
+  });
+  const payload = (await response.json()) as { ticket?: string; error?: string };
+  if (!response.ok || !payload.ticket) {
+    throw new Error(localizeError(payload.error ?? "Could not create observer ticket"));
   }
   return payload.ticket;
 }
@@ -981,7 +1266,11 @@ async function copyRoomLink(): Promise<void> {
 
 async function copyWatchLink(): Promise<void> {
   if (!session) return;
-  const link = `${location.origin}/room/${session.roomId}/watch`;
+  await copyWatchLinkForRoom(session.roomId);
+}
+
+async function copyWatchLinkForRoom(roomId: string): Promise<void> {
+  const link = `${location.origin}/room/${roomId}/watch`;
   if (navigator.clipboard) {
     await navigator.clipboard.writeText(link);
   }
@@ -1028,10 +1317,16 @@ function clearSession(): void {
   room = undefined;
   privateView = undefined;
   socket = undefined;
+  observerSocket = undefined;
 }
 
 function nameFor(playerId: string): string {
   return room?.seats.find((seat) => seat.seatId === playerId)?.nickname ?? playerId;
+}
+
+function observerNameFor(playerId: string): string {
+  const observerRoom = room as ObserverRoomView | undefined;
+  return observerRoom?.observer?.players.find((player) => player.id === playerId)?.nickname ?? nameFor(playerId);
 }
 
 function formatDeadline(deadline: number | undefined): string {

@@ -386,6 +386,49 @@ Deployment:
 
 ## Planned Next Versions
 
+## 0.4.8 - V4.8 Host Observer Mode
+
+Status:
+
+- Deployed.
+
+Completed:
+
+- Added a host-authenticated observer route at `/room/:roomId/host-watch`.
+- Added short-lived host observer tickets and observer WebSocket/state APIs.
+- Added a read-only host observer UI.
+- Host observer can see hidden gameplay state:
+  - roles before endgame
+  - Werewolf chat
+  - Werewolf proposed target and confirmations
+  - day readiness
+  - vote map and missing voters
+- Kept public spectator mode public-safe.
+- Added API and browser smoke coverage proving observer access works and public spectators still do not receive hidden data.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_8 npm run smoke:remote:quick`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_18 npm run smoke:remote:full`
+
+Deployment:
+
+- URL: `https://miller-hollow.fshiori.workers.dev`
+- App version: `0.4.8`
+- Runtime build sha: `local`
+- Worker Version ID: `a46cfbde-cc7b-4131-a52a-e6a46b6e0930`
+- Deployed at: `2026-05-15T11:03:32Z`
+- Note: deploy is from the current working tree; code is not pushed.
+
+## Planned Next Versions
+
 ### V5 - Complete Official Role Flow
 
 Planned:
