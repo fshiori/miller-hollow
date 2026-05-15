@@ -30,13 +30,15 @@ body {
   background-size: 36px 36px;
 }
 
+a,
 button,
 input,
 select {
   font: inherit;
 }
 
-button {
+button,
+.button-link {
   min-height: 40px;
   border: 0;
   border-radius: 6px;
@@ -46,6 +48,10 @@ button {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 button:hover:not(:disabled) {
@@ -210,6 +216,11 @@ label {
   background: var(--rust);
 }
 
+.text-link {
+  color: var(--green);
+  font-weight: 800;
+}
+
 .banner {
   margin-bottom: 16px;
   padding: 12px 14px;
@@ -245,6 +256,19 @@ label {
   gap: 6px;
   color: #637079;
   font-size: 13px;
+}
+
+.seat-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.mini {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .seat.host {

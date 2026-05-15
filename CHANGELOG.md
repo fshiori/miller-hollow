@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0 - V2 public play
+
+### Added
+
+- Spectator mode with short-lived single-use spectator WebSocket tickets.
+- Spectator sockets receive public room views only and cannot submit player actions.
+- Host controls for locking and unlocking rooms, enabling and disabling spectators, kicking lobby seats, transferring host, and resetting non-playing lobbies.
+- Join links and watch links for direct room sharing.
+- Host UI controls for room sharing, spectator toggles, room locking, seat kick, and host transfer.
+- Smoke coverage for spectator hidden-info boundaries and host-control authorization.
+- V2 design and implementation documentation.
+
+### Changed
+
+- Room settings now include public `locked` and `spectatorsEnabled` flags.
+- Diagnostics now include active spectator counts and safe room settings.
+- `/api/health` reports version `0.2.0`.
+
 ## 0.1.1 - V1 follow-up hardening
 
 ### Added

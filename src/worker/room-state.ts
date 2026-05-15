@@ -18,12 +18,15 @@ export interface RoomState {
   settings: {
     playerCount: 8;
     presetId: "official_8_player_base_v1";
+    spectatorsEnabled: boolean;
+    locked: boolean;
   };
   seats: SeatState[];
   hostSeatId?: string;
   game?: GameState;
   chatMessages: ChatMessage[];
   socketTickets: Record<string, SocketTicket>;
+  spectatorTickets: Record<string, SpectatorTicket>;
   currentDeadlineAt?: number;
   createdAt: number;
   updatedAt: number;
@@ -31,6 +34,10 @@ export interface RoomState {
 
 export interface SocketTicket {
   seatId: string;
+  expiresAt: number;
+}
+
+export interface SpectatorTicket {
   expiresAt: number;
 }
 
@@ -48,7 +55,9 @@ export function createInitialRoomState(roomId: string, now: number): RoomState {
     status: "lobby",
     settings: {
       playerCount: 8,
-      presetId: "official_8_player_base_v1"
+      presetId: "official_8_player_base_v1",
+      spectatorsEnabled: true,
+      locked: false
     },
     seats: Array.from({ length: 8 }, (_, index) => ({
       seatId: `seat-${index + 1}`,
@@ -57,6 +66,7 @@ export function createInitialRoomState(roomId: string, now: number): RoomState {
     })),
     chatMessages: [],
     socketTickets: {},
+    spectatorTickets: {},
     createdAt: now,
     updatedAt: now
   };

@@ -37,6 +37,10 @@ interface TokenRequest {
   token?: string;
 }
 
+interface HostSeatRequest extends TokenRequest {
+  targetSeatId?: string;
+}
+
 interface ClientMessage {
   type?: string;
   targetId?: string;
@@ -54,6 +58,7 @@ export class RoomObject implements DurableObject {
   private state: DurableObjectState;
   private env: Env;
   private sessions = new Map<WebSocket, string>();
+  private spectatorSessions = new Set<WebSocket>();
   private rateBuckets = new Map<string, RateBucket>();
 
   constructor(state: DurableObjectState, env: Env) {
@@ -81,6 +86,14 @@ export class RoomObject implements DurableObject {
       return this.reset(request);
     }
 
+    if (request.method === "POST" && url.pathname.endsWith("/spectator-ticket")) {
+      return this.createSpectatorTicket();
+    }
+
+    if (request.method === "POST" && url.pathname.includes("/host/")) {
+      return this.hostControl(request);
+    }
+
     if (request.method === "POST" && url.pathname.endsWith("/socket-ticket")) {
       return this.createSocketTicket(request);
     }
@@ -100,6 +113,10 @@ export class RoomObject implements DurableObject {
 
     if (request.method === "GET" && url.pathname.endsWith("/socket")) {
       return this.openSocket(request);
+    }
+
+    if (request.method === "GET" && url.pathname.endsWith("/spectator-socket")) {
+      return this.openSpectatorSocket(request);
     }
 
     return json({ error: "Not found" }, 404);
@@ -132,6 +149,9 @@ export class RoomObject implements DurableObject {
     }
 
     const room = await this.loadRoom(roomId);
+    if (room.settings.locked) {
+      return json({ error: "Room is locked" }, 409);
+    }
     if (room.status !== "lobby") {
       return json({ error: "Game has already started" }, 409);
     }
@@ -197,6 +217,54 @@ export class RoomObject implements DurableObject {
     return json(this.publicRoomView(room));
   }
 
+  private async hostControl(request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => ({}))) as HostSeatRequest;
+    const url = new URL(request.url);
+    const action = url.pathname.split("/").slice(-1)[0];
+    const room = await this.loadRoom(this.state.id.toString());
+    const host = await this.authenticateHost(room, body.seatId, body.token);
+    if (!host) {
+      return json({ error: "Only the host can use room controls" }, 403);
+    }
+
+    try {
+      if (action === "enable-spectators") {
+        room.settings.spectatorsEnabled = true;
+      } else if (action === "disable-spectators") {
+        room.settings.spectatorsEnabled = false;
+        this.disconnectSpectators("Spectators disabled by host");
+      } else if (action === "lock") {
+        this.assertLobby(room);
+        room.settings.locked = true;
+      } else if (action === "unlock") {
+        this.assertLobby(room);
+        room.settings.locked = false;
+      } else if (action === "kick") {
+        this.assertLobby(room);
+        this.kickSeat(room, body.targetSeatId);
+      } else if (action === "transfer") {
+        this.assertLobby(room);
+        this.transferHost(room, body.targetSeatId);
+      } else if (action === "reset-lobby") {
+        if (room.status === "playing") {
+          return json({ error: "Playing games cannot be reset" }, 409);
+        }
+        this.resetLobby(room);
+        await this.state.storage.deleteAlarm();
+      } else {
+        return json({ error: "Unknown host control" }, 404);
+      }
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "Host control failed" }, 409);
+    }
+
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    this.logRoomEvent(room, "host_control", { action, hostSeatId: host.seatId });
+    await this.broadcastRoom(room);
+    return json(this.publicRoomView(room));
+  }
+
   private async reset(request: Request): Promise<Response> {
     const body = (await request.json().catch(() => ({}))) as TokenRequest;
     const room = await this.loadRoom(this.state.id.toString());
@@ -250,8 +318,13 @@ export class RoomObject implements DurableObject {
       occupiedSeats: room.seats.filter((candidate) => candidate.nickname).length,
       connectedSeats: room.seats.filter((candidate) => candidate.connectionStatus === "connected").length,
       activeSockets: this.sessions.size,
+      activeSpectators: this.spectatorSessions.size,
       pendingSocketTickets: Object.keys(room.socketTickets).length,
       chatMessages: room.chatMessages.length,
+      settings: {
+        locked: room.settings.locked,
+        spectatorsEnabled: room.settings.spectatorsEnabled
+      },
       currentDeadlineAt: room.currentDeadlineAt,
       createdAt: room.createdAt,
       updatedAt: room.updatedAt
@@ -281,6 +354,29 @@ export class RoomObject implements DurableObject {
     return json({
       ticket,
       expiresAt: room.socketTickets[ticketHash]?.expiresAt
+    });
+  }
+
+  private async createSpectatorTicket(): Promise<Response> {
+    const room = await this.loadRoom(this.state.id.toString());
+    if (!room.settings.spectatorsEnabled) {
+      return json({ error: "Spectators are disabled" }, 403);
+    }
+    if (!this.takeRateLimit("spectator-ticket", 60, 60_000)) {
+      return json({ error: "Too many spectator tickets. Try again soon." }, 429);
+    }
+
+    const ticket = createToken();
+    const ticketHash = await hashToken(ticket);
+    this.pruneExpiredSpectatorTickets(room);
+    room.spectatorTickets[ticketHash] = {
+      expiresAt: Date.now() + 30_000
+    };
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    return json({
+      ticket,
+      expiresAt: room.spectatorTickets[ticketHash]?.expiresAt
     });
   }
 
@@ -318,6 +414,47 @@ export class RoomObject implements DurableObject {
     });
 
     this.sendSeatViews(room, server, seat.seatId);
+    await this.broadcastRoom(room);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private async openSpectatorSocket(request: Request): Promise<Response> {
+    if (request.headers.get("upgrade") !== "websocket") {
+      return json({ error: "Expected WebSocket upgrade" }, 426);
+    }
+    const url = new URL(request.url);
+    const room = await this.loadRoom(this.state.id.toString());
+    if (!room.settings.spectatorsEnabled) {
+      return json({ error: "Spectators are disabled" }, 403);
+    }
+    const ok = await this.authenticateSpectatorTicket(room, url.searchParams.get("ticket"));
+    if (!ok) {
+      return json({ error: "Invalid or expired spectator ticket" }, 403);
+    }
+
+    const pair = new WebSocketPair();
+    const client = pair[0];
+    const server = pair[1];
+    server.accept();
+    this.spectatorSessions.add(server);
+    await this.saveRoom(room);
+
+    server.addEventListener("message", (event) => {
+      const message = JSON.parse(String(event.data)) as ClientMessage;
+      if (message.type === "ping") {
+        this.send(server, { type: "pong" });
+      } else {
+        this.send(server, { type: "error", error: "Spectators cannot act" });
+      }
+    });
+    server.addEventListener("close", () => {
+      this.spectatorSessions.delete(server);
+    });
+    server.addEventListener("error", () => {
+      this.spectatorSessions.delete(server);
+    });
+
+    this.send(server, { type: "room_view", room: this.publicRoomView(room) });
     await this.broadcastRoom(room);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -392,6 +529,49 @@ export class RoomObject implements DurableObject {
     room.status = "playing";
     this.afterGameMutation(room);
     this.logRoomEvent(room, "game_started", { occupiedSeats: room.seats.length, phase: room.game.phase });
+  }
+
+  private assertLobby(room: RoomState): void {
+    if (room.status !== "lobby") {
+      throw new Error("Only lobby rooms can use this control");
+    }
+  }
+
+  private kickSeat(room: RoomState, targetSeatId: string | undefined): void {
+    if (!targetSeatId) throw new Error("Target seat is required");
+    if (targetSeatId === room.hostSeatId) throw new Error("Host cannot kick themselves");
+    const seat = room.seats.find((candidate) => candidate.seatId === targetSeatId);
+    if (!seat?.nickname) throw new Error("Target seat is empty");
+    this.closePlayerSockets(targetSeatId, "Kicked by host");
+    delete seat.nickname;
+    delete seat.playerTokenHash;
+    delete seat.lastSeenAt;
+    seat.connectionStatus = "disconnected";
+  }
+
+  private transferHost(room: RoomState, targetSeatId: string | undefined): void {
+    if (!targetSeatId) throw new Error("Target seat is required");
+    const seat = room.seats.find((candidate) => candidate.seatId === targetSeatId);
+    if (!seat?.nickname) throw new Error("Target seat is empty");
+    room.hostSeatId = seat.seatId;
+  }
+
+  private resetLobby(room: RoomState): void {
+    room.status = "lobby";
+    delete room.game;
+    delete room.currentDeadlineAt;
+    room.chatMessages = [];
+    room.socketTickets = {};
+    room.spectatorTickets = {};
+    for (const seat of room.seats) {
+      if (seat.seatId !== room.hostSeatId) {
+        this.closePlayerSockets(seat.seatId, "Lobby reset by host");
+        delete seat.nickname;
+        delete seat.playerTokenHash;
+        delete seat.lastSeenAt;
+        seat.connectionStatus = "disconnected";
+      }
+    }
   }
 
   private messageToCommand(room: RoomState, seatId: string, message: ClientMessage): GameCommand {
@@ -546,6 +726,11 @@ export class RoomObject implements DurableObject {
     return (await hashToken(token)) === seat.playerTokenHash ? seat : undefined;
   }
 
+  private async authenticateHost(room: RoomState, seatId: string | null | undefined, token: string | null | undefined) {
+    const seat = await this.authenticate(room, seatId, token);
+    return seat?.seatId === room.hostSeatId ? seat : undefined;
+  }
+
   private async authenticateSocketTicket(room: RoomState, ticket: string | null | undefined) {
     if (!ticket) {
       return undefined;
@@ -563,6 +748,20 @@ export class RoomObject implements DurableObject {
     return room.seats.find((candidate) => candidate.seatId === socketTicket.seatId);
   }
 
+  private async authenticateSpectatorTicket(room: RoomState, ticket: string | null | undefined): Promise<boolean> {
+    if (!ticket) {
+      return false;
+    }
+    this.pruneExpiredSpectatorTickets(room);
+    const ticketHash = await hashToken(ticket);
+    const spectatorTicket = room.spectatorTickets[ticketHash];
+    if (!spectatorTicket) {
+      return false;
+    }
+    delete room.spectatorTickets[ticketHash];
+    return Date.now() <= spectatorTicket.expiresAt;
+  }
+
   private pruneExpiredSocketTickets(room: RoomState): void {
     const now = Date.now();
     for (const [ticketHash, ticket] of Object.entries(room.socketTickets)) {
@@ -572,11 +771,23 @@ export class RoomObject implements DurableObject {
     }
   }
 
+  private pruneExpiredSpectatorTickets(room: RoomState): void {
+    const now = Date.now();
+    for (const [ticketHash, ticket] of Object.entries(room.spectatorTickets)) {
+      if (ticket.expiresAt <= now) {
+        delete room.spectatorTickets[ticketHash];
+      }
+    }
+  }
+
   private async loadRoom(roomId: string): Promise<RoomState> {
     const stored = await this.state.storage.get<RoomState>("room");
     if (stored) {
+      stored.settings.spectatorsEnabled ??= true;
+      stored.settings.locked ??= false;
       stored.chatMessages ??= [];
       stored.socketTickets ??= {};
+      stored.spectatorTickets ??= {};
       return stored;
     }
     const room = createInitialRoomState(roomId, Date.now());
@@ -591,6 +802,9 @@ export class RoomObject implements DurableObject {
   private async broadcastRoom(room: RoomState): Promise<void> {
     for (const [socket, seatId] of this.sessions) {
       this.sendSeatViews(room, socket, seatId);
+    }
+    for (const socket of this.spectatorSessions) {
+      this.send(socket, { type: "room_view", room: this.publicRoomView(room) });
     }
   }
 
@@ -609,7 +823,26 @@ export class RoomObject implements DurableObject {
       socket.send(JSON.stringify(payload));
     } catch {
       this.sessions.delete(socket);
+      this.spectatorSessions.delete(socket);
     }
+  }
+
+  private closePlayerSockets(seatId: string, reason: string): void {
+    for (const [socket, socketSeatId] of this.sessions) {
+      if (socketSeatId === seatId) {
+        this.send(socket, { type: "error", error: reason });
+        socket.close();
+        this.sessions.delete(socket);
+      }
+    }
+  }
+
+  private disconnectSpectators(reason: string): void {
+    for (const socket of this.spectatorSessions) {
+      this.send(socket, { type: "error", error: reason });
+      socket.close();
+    }
+    this.spectatorSessions.clear();
   }
 
   private publicRoomView(room: RoomState) {
@@ -629,7 +862,8 @@ export class RoomObject implements DurableObject {
       chatMessages: room.chatMessages,
       currentDeadlineAt: room.currentDeadlineAt,
       createdAt: room.createdAt,
-      updatedAt: room.updatedAt
+      updatedAt: room.updatedAt,
+      activeSpectators: this.spectatorSessions.size
     };
   }
 }

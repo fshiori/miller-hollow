@@ -23,7 +23,8 @@ V1 does not need D1, KV, R2, Queues, Workers AI, Analytics Engine, or a separate
 
 - Public endpoint: `https://miller-hollow.fshiori.workers.dev`
 - Health endpoint: `https://miller-hollow.fshiori.workers.dev/api/health`
-- V1 deployed version ID: `18639dd0-434e-444c-a6a6-63a70ee8000b`
+- Current deployed version ID: `18639dd0-434e-444c-a6a6-63a70ee8000b`
+- Current app version before V2 deploy: `0.1.1`
 - Verified on: 2026-05-15
 
 ## Pre-Deploy Verification
@@ -38,6 +39,7 @@ npm run build
 npm run smoke:v1
 npm run smoke:browser
 npm run smoke:remote
+npm run smoke:remote:quick
 npm run secrets:check
 npm run deploy:dry-run
 ```
@@ -84,7 +86,9 @@ The first deploy applies Durable Object migration tag `v1` and creates the `Room
 - WebSockets must use short-lived single-use socket tickets, not reconnect tokens.
 - `/api/health` must avoid room state, tokens, account secrets, and player-specific data.
 - Room creation, socket-ticket creation, socket actions, and day chat have basic per-isolate/per-room rate limits.
-- Host-only room diagnostics expose redacted counters only: seat counts, active sockets, pending socket tickets, phase, deadline, and timestamps.
+- Host-only room diagnostics expose redacted counters only: seat counts, active player sockets, active spectator sockets, pending socket tickets, phase, deadline, safe settings, and timestamps.
+- Spectator sockets receive only public room views and must never receive `private_view`.
+- Host controls require host reconnect-token authentication and must not reveal role assignments before endgame.
 - Logs use redacted JSON events and avoid full room snapshots, raw game state, reconnect tokens, socket tickets, token hashes, and private views.
 - The default timer profile should remain `production` in `wrangler.toml`.
 

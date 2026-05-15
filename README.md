@@ -1,6 +1,6 @@
 # Miller Hollow
 
-First playable V1 implementation for an 8-player online Werewolves of Miller's Hollow room on Cloudflare Workers and Durable Objects.
+Public-play V2 implementation for an 8-player online Werewolves of Miller's Hollow room on Cloudflare Workers and Durable Objects.
 
 This is an unofficial fan implementation and is not affiliated with the original game publisher or rights holders.
 
@@ -11,8 +11,9 @@ This is an unofficial fan implementation and is not affiliated with the original
 - `npm test` runs engine unit tests.
 - `npm run build` builds the browser assets and typechecks the Worker.
 - `npm run smoke:v1` starts Wrangler and exercises room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, WebSocket night actions, day chat, timer-driven vote start, and vote resolution.
-- `npm run smoke:browser` starts Wrangler and drives 8 isolated Chromium browser contexts through create, join, start, night actions, day chat, timer-driven vote start, and voting.
+- `npm run smoke:browser` starts Wrangler and drives 8 isolated Chromium browser contexts plus a spectator through create, join, watch, reconnect, start, night actions, day chat, timer-driven vote start, voting, and responsive screenshots.
 - `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev`.
+- `npm run deploy:versioned` deploys with `MILLER_HOLLOW_BUILD_SHA` set from the current git commit.
 - `npm run deploy:dry-run` validates the Worker bundle and Cloudflare configuration without publishing.
 - `npm run secrets:check` scans tracked files for common accidentally committed secret patterns.
 
@@ -22,7 +23,9 @@ The playable preset is fixed to 8 players: 2 Werewolves, 1 Seer, 1 Witch, and 4 
 
 Rooms use anonymous nicknames and browser-held reconnect tokens. The server stores token hashes, owns the hidden game state, and sends each browser only public room state plus that seat's private role/action view.
 
-Hosts can copy a room link, inspect redacted room diagnostics, and reset an ended room for another game with the same seats.
+Hosts can copy player and spectator links, lock the lobby, toggle spectator access, kick lobby seats, transfer host, inspect redacted room diagnostics, and reset non-playing rooms.
+
+Spectators can watch from `/room/:roomId/watch` without occupying a player seat. Spectator sockets receive public room views only and never receive player private views.
 
 ## Deployment Notes
 
@@ -66,6 +69,8 @@ For local Cloudflare credentials, copy `.env.example` to `.env.local` and keep `
 - Reconnect tokens are stored in the browser and only SHA-256 hashes are stored server-side.
 - WebSockets use short-lived single-use socket tickets. Browsers exchange their reconnect token through `POST /api/rooms/:roomId/socket-ticket`, then open `/socket?ticket=...`.
 - Host-only `/diagnostics` returns redacted operational counters such as occupied seats, connected seats, active sockets, pending socket tickets, phase, and timestamps.
+- Spectator WebSockets use short-lived single-use tickets and receive only public room state.
+- Host controls are token-authenticated and do not expose role assignments or private state.
 - Worker logs use event names and counters only; they must not include reconnect tokens, token hashes, private views, or full room snapshots.
 - Production code should avoid logging room snapshots or raw game state.
 

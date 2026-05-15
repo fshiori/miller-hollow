@@ -1,6 +1,6 @@
 {
   "name": "miller-hollow",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,11 +8,14 @@
     "dev": "wrangler dev",
     "smoke:browser": "node scripts/browser-smoke-v1.mjs",
     "smoke:remote": "node scripts/remote-smoke-v1.mjs",
+    "smoke:remote:full": "node scripts/remote-smoke-v1.mjs",
+    "smoke:remote:quick": "node scripts/remote-smoke-v1.mjs",
     "smoke:v1": "node scripts/smoke-v1.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "preview": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:versioned": "wrangler deploy --var MILLER_HOLLOW_BUILD_SHA:$(git rev-parse --short HEAD)",
     "deploy:dry-run": "wrangler deploy --dry-run",
     "secrets:check": "node scripts/check-no-secrets.mjs"
   },

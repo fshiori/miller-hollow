@@ -23,6 +23,8 @@ try {
   assert(health.storage === "durable_object_sqlite", "health endpoint returned unexpected storage");
   const room = await post("/api/rooms");
   const joined = [];
+  const spectatorTicket = await post(`/api/rooms/${room.roomId}/spectator-ticket`);
+  assert(spectatorTicket.ticket, "spectator ticket was not returned");
   for (let index = 1; index <= 8; index += 1) {
     joined.push(await post(`/api/rooms/${room.roomId}/join`, { nickname: `Smoke ${index}` }));
   }
@@ -41,6 +43,10 @@ try {
     seatId: joined[1].seatId,
     token: joined[1].token
   });
+  await expectHttpError(`/api/rooms/${room.roomId}/host/lock`, 403, {
+    seatId: joined[1].seatId,
+    token: joined[1].token
+  });
 
   const reconnected = await post(`/api/rooms/${room.roomId}/reconnect`, {
     seatId: joined[0].seatId,
@@ -49,7 +55,40 @@ try {
   assert(reconnected.seatId === joined[0].seatId, "reconnect did not return the same seat");
   const diagnostics = await get(`/api/rooms/${room.roomId}/diagnostics?seatId=${joined[0].seatId}&token=${joined[0].token}`);
   assert(diagnostics.occupiedSeats === 8, "diagnostics did not report occupied seats");
+  assert(typeof diagnostics.activeSpectators === "number", "diagnostics did not report active spectators");
   assert(!JSON.stringify(diagnostics).includes("token"), "diagnostics leaked token data");
+  await post(`/api/rooms/${room.roomId}/host/disable-spectators`, {
+    seatId: joined[0].seatId,
+    token: joined[0].token
+  });
+  await expectHttpError(`/api/rooms/${room.roomId}/spectator-ticket`, 403);
+  await post(`/api/rooms/${room.roomId}/host/enable-spectators`, {
+    seatId: joined[0].seatId,
+    token: joined[0].token
+  });
+  await post(`/api/rooms/${room.roomId}/host/lock`, {
+    seatId: joined[0].seatId,
+    token: joined[0].token
+  });
+  await post(`/api/rooms/${room.roomId}/host/unlock`, {
+    seatId: joined[0].seatId,
+    token: joined[0].token
+  });
+  await post(`/api/rooms/${room.roomId}/host/transfer`, {
+    seatId: joined[0].seatId,
+    token: joined[0].token,
+    targetSeatId: joined[1].seatId
+  });
+  await expectHttpError(`/api/rooms/${room.roomId}/host/lock`, 403, {
+    seatId: joined[0].seatId,
+    token: joined[0].token
+  });
+  await post(`/api/rooms/${room.roomId}/host/transfer`, {
+    seatId: joined[1].seatId,
+    token: joined[1].token,
+    targetSeatId: joined[0].seatId
+  });
+  await expectSpectatorPublicOnly(room.roomId);
   await post(`/api/rooms/${room.roomId}/reset`, {
     seatId: joined[0].seatId,
     token: joined[0].token
@@ -70,6 +109,7 @@ try {
   assert(!JSON.stringify(startedState).includes("playerTokenHash"), "public state leaked token hashes");
   assert(!JSON.stringify(startedState).includes("socketTickets"), "public state leaked socket tickets");
   assert(!JSON.stringify(startedState).includes('"privateView"'), "public state leaked private views");
+  await expectSpectatorPublicOnly(room.roomId);
 
   const wolfIndex = privates.findIndex((view) => view.role === "werewolf");
   const seerIndex = privates.findIndex((view) => view.role === "seer");
@@ -147,7 +187,14 @@ async function post(path, body) {
 
 async function expectHttpError(path, status, body) {
   const response = await fetch(`${base}${path}`, {
-    method: body || path.includes("/join") || path.includes("/reconnect") || path.includes("/start") ? "POST" : "GET",
+    method:
+      body ||
+      path.includes("/join") ||
+      path.includes("/reconnect") ||
+      path.includes("/start") ||
+      path.includes("/spectator-ticket")
+        ? "POST"
+        : "GET",
     headers: body ? { "content-type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined
   });
@@ -212,6 +259,39 @@ async function expectSocketError(roomId, player, message) {
     socket.addEventListener("message", (event) => {
       const payload = JSON.parse(String(event.data));
       if (payload.type === "error") {
+        clearTimeout(timeout);
+        socket.close();
+        resolve();
+      }
+    });
+    socket.addEventListener("error", reject);
+  });
+}
+
+async function expectSpectatorPublicOnly(roomId) {
+  const ticketPayload = await post(`/api/rooms/${roomId}/spectator-ticket`);
+  assert(ticketPayload.ticket, "spectator ticket was not returned");
+  const socket = new WebSocket(`${wsBase}/api/rooms/${roomId}/spectator-socket?ticket=${ticketPayload.ticket}`);
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("expected spectator room view")), 10_000);
+    let sawRoomView = false;
+    socket.addEventListener("message", (event) => {
+      const payload = JSON.parse(String(event.data));
+      if (payload.type === "private_view") {
+        clearTimeout(timeout);
+        reject(new Error("spectator received private view"));
+      }
+      if (payload.type === "room_view") {
+        const body = JSON.stringify(payload);
+        if (body.includes("playerTokenHash") || body.includes("socketTickets") || body.includes('"privateView"')) {
+          clearTimeout(timeout);
+          reject(new Error("spectator public view leaked hidden state"));
+          return;
+        }
+        sawRoomView = true;
+        socket.send(JSON.stringify({ type: "night_action" }));
+      }
+      if (sawRoomView && payload.type === "error") {
         clearTimeout(timeout);
         socket.close();
         resolve();

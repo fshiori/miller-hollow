@@ -10,6 +10,8 @@ assert(home.ok, `homepage failed with ${home.status}`);
 assert((home.headers.get("content-type") ?? "").includes("text/html"), "homepage did not return html");
 
 const room = await post("/api/rooms");
+const spectatorTicket = await post(`/api/rooms/${room.roomId}/spectator-ticket`);
+assert(spectatorTicket.ticket, "spectator ticket was not returned");
 const joined = [];
 for (let index = 1; index <= 8; index += 1) {
   joined.push(await post(`/api/rooms/${room.roomId}/join`, { nickname: `Remote ${index}` }));
@@ -19,7 +21,18 @@ await expectHttpError(`/api/rooms/${room.roomId}/private?seatId=${joined[0].seat
 await expectHttpError(`/api/rooms/${room.roomId}/diagnostics?seatId=${joined[0].seatId}&token=invalid-token`, 403);
 const diagnostics = await get(`/api/rooms/${room.roomId}/diagnostics?seatId=${joined[0].seatId}&token=${joined[0].token}`);
 assert(diagnostics.occupiedSeats === 8, "diagnostics did not report occupied seats");
+assert(typeof diagnostics.activeSpectators === "number", "diagnostics did not report active spectators");
 assert(!JSON.stringify(diagnostics).includes("token"), "diagnostics leaked token data");
+await post(`/api/rooms/${room.roomId}/host/disable-spectators`, {
+  seatId: joined[0].seatId,
+  token: joined[0].token
+});
+await expectHttpError(`/api/rooms/${room.roomId}/spectator-ticket`, 403, "POST");
+await post(`/api/rooms/${room.roomId}/host/enable-spectators`, {
+  seatId: joined[0].seatId,
+  token: joined[0].token
+});
+await expectSpectatorPublicOnly(room.roomId);
 await post(`/api/rooms/${room.roomId}/start`, {
   seatId: joined[0].seatId,
   token: joined[0].token
@@ -30,6 +43,7 @@ assert(state.game?.phase === "night_werewolves", "game did not start in werewolf
 assert(!publicStateHasRoles(state), "public state leaked roles before endgame");
 assert(!JSON.stringify(state).includes("playerTokenHash"), "public state leaked token hashes");
 assert(!JSON.stringify(state).includes("socketTickets"), "public state leaked socket tickets");
+await expectSpectatorPublicOnly(room.roomId);
 
 const privates = await privateViews(room.roomId, joined);
 const wolfIndex = privates.findIndex((view) => view.role === "werewolf");
@@ -62,12 +76,45 @@ async function post(path, body) {
   return json;
 }
 
-async function expectHttpError(path, status) {
-  const response = await fetch(`${base}${path}`);
+async function expectHttpError(path, status, method = "GET") {
+  const response = await fetch(`${base}${path}`, { method });
   if (response.status !== status) {
     const text = await response.text();
     throw new Error(`${path} expected ${status}, got ${response.status}: ${text}`);
   }
+}
+
+async function expectSpectatorPublicOnly(roomId) {
+  const ticketPayload = await post(`/api/rooms/${roomId}/spectator-ticket`);
+  assert(ticketPayload.ticket, "spectator ticket was not returned");
+  const socket = new WebSocket(`${wsBase}/api/rooms/${roomId}/spectator-socket?ticket=${ticketPayload.ticket}`);
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("expected spectator room view")), 10_000);
+    let sawRoomView = false;
+    socket.addEventListener("message", (event) => {
+      const payload = JSON.parse(String(event.data));
+      if (payload.type === "private_view") {
+        clearTimeout(timeout);
+        reject(new Error("spectator received private view"));
+      }
+      if (payload.type === "room_view") {
+        const body = JSON.stringify(payload);
+        if (body.includes("playerTokenHash") || body.includes("socketTickets") || body.includes('"privateView"')) {
+          clearTimeout(timeout);
+          reject(new Error("spectator public view leaked hidden state"));
+          return;
+        }
+        sawRoomView = true;
+        socket.send(JSON.stringify({ type: "night_action" }));
+      }
+      if (sawRoomView && payload.type === "error") {
+        clearTimeout(timeout);
+        socket.close();
+        resolve();
+      }
+    });
+    socket.addEventListener("error", reject);
+  });
 }
 
 async function privateViews(roomId, players) {

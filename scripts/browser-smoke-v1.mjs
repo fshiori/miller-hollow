@@ -22,6 +22,8 @@ try {
   browser = await chromium.launch();
   const contexts = await Promise.all(Array.from({ length: 8 }, () => browser.newContext()));
   const pages = await Promise.all(contexts.map((context) => context.newPage()));
+  const spectatorContext = await browser.newContext();
+  const spectatorPage = await spectatorContext.newPage();
 
   await pages[0].goto(base);
   await pages[0].locator('#create-form input[name="nickname"]').fill("Browser 1");
@@ -29,6 +31,17 @@ try {
   await pages[0].getByTestId("room-id").waitFor();
   const roomId = (await pages[0].getByTestId("room-id").textContent())?.trim();
   assert(roomId, "room id did not render after create");
+  await pages[0].locator("#lock-button").click();
+  await pages[0].locator("#lock-button").filter({ hasText: "Unlock" }).waitFor();
+  await pages[0].locator("#lock-button").click();
+  await pages[0].locator("#lock-button").filter({ hasText: "Lock" }).waitFor();
+
+  await spectatorPage.goto(`${base}/room/${roomId}/watch`);
+  await spectatorPage.getByTestId("room-id").waitFor();
+  await waitForAnyPagePhase([spectatorPage], "Lobby");
+  await pages[0].screenshot({ path: ".wrangler/browser-smoke-desktop-lobby.png", fullPage: true });
+  await spectatorPage.setViewportSize({ width: 390, height: 844 });
+  await spectatorPage.screenshot({ path: ".wrangler/browser-smoke-mobile-watch.png", fullPage: true });
 
   for (let index = 1; index < pages.length; index += 1) {
     await pages[index].goto(base);
@@ -42,6 +55,15 @@ try {
   await pages[0].locator("#start-button").click();
   await waitForAnyPagePhase(pages, "night_werewolves");
   await waitForRoles(pages);
+  await waitForAnyPagePhase([spectatorPage], "night_werewolves");
+  assert((await spectatorPage.getByTestId("role").count()) === 0, "spectator rendered a private role");
+
+  const roleBeforeReload = (await pages[0].getByTestId("role").textContent())?.trim();
+  await pages[0].reload();
+  await pages[0].getByTestId("role").waitFor({ timeout: 10_000 });
+  await waitConnected(pages[0]);
+  const roleAfterReload = (await pages[0].getByTestId("role").textContent())?.trim();
+  assert(roleBeforeReload === roleAfterReload, "player reconnect did not restore the same private role");
 
   const werewolfPage = await pageWithRole(pages, "werewolf");
   await submitSelectForm(werewolfPage, "#night-form");
@@ -52,24 +74,28 @@ try {
   await waitForAnyPagePhase(pages, "night_witch");
 
   const witchPage = await pageWithRole(pages, "witch");
+  await waitConnected(witchPage);
   await witchPage.locator("#witch-form").waitFor({ state: "visible" });
   await witchPage.locator('#witch-form button[type="submit"]').click();
   await waitForAnyPagePhase(pages, "day_discussion");
 
   const chatPage = await firstVisible(pages, '#chat-form input:not([disabled])');
+  await waitConnected(chatPage);
   await chatPage.locator('#chat-form input[name="message"]').fill("Browser smoke day chat");
   await chatPage.locator('#chat-form button[type="submit"]').click();
   await waitForAnyPagePhase(pages, "day_vote", 30_000);
 
   for (const page of pages) {
     if (await page.locator("#vote-form").isVisible().catch(() => false)) {
+      await waitConnected(page);
       await submitSelectForm(page, "#vote-form");
     }
   }
   await waitForAnyPageNotPhase(pages, "day_vote", 10_000);
 
   await Promise.all(contexts.map((context) => context.close()));
-  console.log("Browser V1 smoke passed");
+  await spectatorContext.close();
+  console.log("Browser V2 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {
@@ -118,9 +144,14 @@ async function firstVisible(pages, selector) {
 }
 
 async function submitSelectForm(page, selector) {
+  await waitConnected(page);
   await page.locator(selector).waitFor({ state: "visible" });
   await page.locator(`${selector} select`).selectOption({ index: 0 });
   await page.locator(`${selector} button[type="submit"]`).click();
+}
+
+async function waitConnected(page) {
+  await page.locator(".status-pill").filter({ hasText: "connected" }).waitFor({ timeout: 10_000 });
 }
 
 async function waitForAnyPagePhase(pages, phase, timeout = 10_000) {

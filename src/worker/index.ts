@@ -3,7 +3,7 @@ import type { Env } from "./env";
 
 export { RoomObject };
 
-const APP_VERSION = "0.1.1";
+const APP_VERSION = "0.2.0";
 const CREATE_ROOM_LIMIT = { limit: 10, windowMs: 60_000 };
 const createRoomBuckets = new Map<string, RateBucket>();
 
@@ -49,19 +49,26 @@ export default {
       return Response.json({ roomId: id.toString(), joinUrl });
     }
 
-    const roomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/(join|reconnect|start|reset|state|private|diagnostics|socket-ticket|socket)$/);
+    const roomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/(.+)$/);
     if (roomMatch) {
       const roomId = roomMatch[1];
       const action = roomMatch[2];
       if (!roomId || !action) {
         return Response.json({ error: "Invalid room route" }, { status: 400 });
       }
+      if (!isRoomActionAllowed(action)) {
+        return Response.json({ error: "Invalid room route" }, { status: 404 });
+      }
       const id = env.ROOMS.idFromString(roomId);
       const stub = env.ROOMS.get(id);
       return stub.fetch(new Request(`${url.origin}/rooms/${roomId}/${action}${url.search}`, request));
     }
 
-    return env.ASSETS.fetch(request);
+    const assetResponse = await env.ASSETS.fetch(request);
+    if (request.method === "GET" && assetResponse.status === 404 && acceptsHtml(request)) {
+      return env.ASSETS.fetch(new Request(`${url.origin}/`, request));
+    }
+    return assetResponse;
   }
 };
 
@@ -80,9 +87,36 @@ function takeRateLimit(buckets: Map<string, RateBucket>, key: string, limit: num
   return true;
 }
 
+function isRoomActionAllowed(action: string): boolean {
+  return [
+    "join",
+    "reconnect",
+    "start",
+    "reset",
+    "state",
+    "private",
+    "diagnostics",
+    "socket-ticket",
+    "socket",
+    "spectator-ticket",
+    "spectator-socket",
+    "host/lock",
+    "host/unlock",
+    "host/enable-spectators",
+    "host/disable-spectators",
+    "host/kick",
+    "host/transfer",
+    "host/reset-lobby"
+  ].includes(action);
+}
+
 function pruneRateBuckets(buckets: Map<string, RateBucket>, now: number): void {
   if (buckets.size < 1024) return;
   for (const [key, bucket] of buckets) {
     if (bucket.resetAt <= now) buckets.delete(key);
   }
+}
+
+function acceptsHtml(request: Request): boolean {
+  return request.headers.get("accept")?.includes("text/html") ?? false;
 }
