@@ -14,6 +14,16 @@ export interface PublicGameView {
   round: number;
   players: PublicPlayerView[];
   publicEvents: GameEvent[];
+  phaseStatus: {
+    label: string;
+    submittedCount?: number;
+    requiredCount?: number;
+  };
+  endgameReveal?: {
+    winner: Team;
+    players: PublicPlayerView[];
+    timeline: GameEvent[];
+  };
   winner?: Team;
 }
 
@@ -31,20 +41,38 @@ export interface PrivatePlayerView {
     poisonAvailable: boolean;
   };
   privateEvents: GameEvent[];
+  actionState: {
+    required: boolean;
+    submitted: boolean;
+    label?: string;
+    waitingFor?: string;
+    cannotActReason?: string;
+  };
 }
 
 export function toPublicView(state: GameState): PublicGameView {
   const revealRoles = state.phase === "ended";
+  const players = state.players.map((player) => ({
+    id: player.id,
+    nickname: player.nickname,
+    alive: state.alive[player.id] ?? false,
+    ...(revealRoles ? { role: state.roles[player.id] } : {})
+  }));
   return {
     phase: state.phase,
     round: state.round,
-    players: state.players.map((player) => ({
-      id: player.id,
-      nickname: player.nickname,
-      alive: state.alive[player.id] ?? false,
-      ...(revealRoles ? { role: state.roles[player.id] } : {})
-    })),
+    players,
     publicEvents: state.publicEvents,
+    phaseStatus: publicPhaseStatus(state),
+    ...(state.phase === "ended" && state.winner
+      ? {
+          endgameReveal: {
+            winner: state.winner,
+            players,
+            timeline: state.publicEvents
+          }
+        }
+      : {}),
     ...(state.winner ? { winner: state.winner } : {})
   };
 }
@@ -89,6 +117,8 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
     })
     .map((player) => player.id);
 
+  const actionState = privateActionState(state, playerId, role, alive, legalActions);
+
   return {
     playerId,
     role,
@@ -109,6 +139,98 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
       poisonAvailable: role === "witch" && state.witchPoisonAvailable
     },
     legalActions,
-    privateEvents: state.privateEvents[playerId] ?? []
+    privateEvents: state.privateEvents[playerId] ?? [],
+    actionState
+  };
+}
+
+function publicPhaseStatus(state: GameState): PublicGameView["phaseStatus"] {
+  if (state.phase === "night_werewolves") {
+    return {
+      label: state.nightActions.werewolfTarget ? "Werewolves submitted" : "Waiting for werewolves",
+      submittedCount: state.nightActions.werewolfTarget ? 1 : 0,
+      requiredCount: 1
+    };
+  }
+  if (state.phase === "night_seer") {
+    const livingSeer = state.players.find((player) => state.alive[player.id] && state.roles[player.id] === "seer");
+    return {
+      label: "Waiting for seer",
+      submittedCount: livingSeer ? 0 : 1,
+      requiredCount: 1
+    };
+  }
+  if (state.phase === "night_witch") {
+    const livingWitch = state.players.find((player) => state.alive[player.id] && state.roles[player.id] === "witch");
+    return {
+      label: "Waiting for witch",
+      submittedCount: livingWitch ? 0 : 1,
+      requiredCount: 1
+    };
+  }
+  if (state.phase === "day_discussion") {
+    return { label: "Discussion open" };
+  }
+  if (state.phase === "day_vote") {
+    const livingCount = state.players.filter((player) => state.alive[player.id]).length;
+    return {
+      label: "Voting",
+      submittedCount: Object.keys(state.votes).length,
+      requiredCount: livingCount
+    };
+  }
+  return { label: state.winner ? `${state.winner} win` : "Game over" };
+}
+
+function privateActionState(
+  state: GameState,
+  playerId: PlayerId,
+  role: Role,
+  alive: boolean,
+  legalActions: string[]
+): PrivatePlayerView["actionState"] {
+  if (!alive) {
+    return {
+      required: false,
+      submitted: false,
+      cannotActReason: "Dead players cannot act."
+    };
+  }
+  if (state.phase === "night_werewolves" && role === "werewolf") {
+    return {
+      required: true,
+      submitted: Boolean(state.nightActions.werewolfTarget),
+      label: "Choose a victim",
+      ...(state.nightActions.werewolfTarget ? {} : { waitingFor: "Werewolf target" })
+    };
+  }
+  if (state.phase === "night_seer" && role === "seer") {
+    return {
+      required: true,
+      submitted: false,
+      label: "Inspect a player",
+      waitingFor: "Seer vision"
+    };
+  }
+  if (state.phase === "night_witch" && role === "witch") {
+    return {
+      required: true,
+      submitted: false,
+      label: "Use or skip potions",
+      waitingFor: "Witch action"
+    };
+  }
+  if (state.phase === "day_vote") {
+    return {
+      required: true,
+      submitted: Boolean(state.votes[playerId]),
+      label: "Vote",
+      ...(state.votes[playerId] ? {} : { waitingFor: "Your vote" })
+    };
+  }
+  return {
+    required: legalActions.length > 0,
+    submitted: false,
+    ...(legalActions.length > 0 ? {} : { cannotActReason: "No action available in this phase." })
   };
 }

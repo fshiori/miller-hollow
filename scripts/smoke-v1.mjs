@@ -94,6 +94,15 @@ try {
     token: joined[0].token
   });
 
+  await expectHttpError(`/api/rooms/${room.roomId}/start`, 409, {
+    seatId: joined[0].seatId,
+    token: joined[0].token
+  });
+  for (const player of joined) {
+    await socketSend(room.roomId, player, { type: "set_ready", ready: true }, undefined);
+  }
+  const readyState = await get(`/api/rooms/${room.roomId}/state`);
+  assert(readyState.startEligibility?.canStart === true, "start eligibility did not become ready");
   await post(`/api/rooms/${room.roomId}/start`, {
     seatId: joined[0].seatId,
     token: joined[0].token
@@ -109,6 +118,7 @@ try {
   assert(!JSON.stringify(startedState).includes("playerTokenHash"), "public state leaked token hashes");
   assert(!JSON.stringify(startedState).includes("socketTickets"), "public state leaked socket tickets");
   assert(!JSON.stringify(startedState).includes('"privateView"'), "public state leaked private views");
+  assert(!startedState.game.endgameReveal, "public state revealed endgame before game ended");
   await expectSpectatorPublicOnly(room.roomId);
 
   const wolfIndex = privates.findIndex((view) => view.role === "werewolf");
@@ -149,7 +159,7 @@ try {
   }
   await waitForNotPhase(room.roomId, "day_vote", 5_000);
   assert(!publicStateHasRoles(await get(`/api/rooms/${room.roomId}/state`)), "public state leaked roles after non-end vote");
-  console.log("V2 smoke passed");
+  console.log("V3 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");

@@ -10,6 +10,8 @@ export interface SeatState {
   playerTokenHash?: string;
   connectionStatus: ConnectionStatus;
   lastSeenAt?: number;
+  ready?: boolean;
+  readyAt?: number;
 }
 
 export interface RoomState {
@@ -62,7 +64,8 @@ export function createInitialRoomState(roomId: string, now: number): RoomState {
     seats: Array.from({ length: 8 }, (_, index) => ({
       seatId: `seat-${index + 1}`,
       controller: "human",
-      connectionStatus: "disconnected"
+      connectionStatus: "disconnected",
+      ready: false
     })),
     chatMessages: [],
     socketTickets: {},

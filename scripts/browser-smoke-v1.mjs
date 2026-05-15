@@ -51,7 +51,12 @@ try {
     await pages[index].getByTestId("room-id").waitFor();
   }
 
+  for (const page of pages) {
+    await page.locator("#ready-button").waitFor({ state: "visible" });
+    await page.locator("#ready-button").click();
+  }
   await pages[0].locator("#start-button").waitFor({ state: "visible" });
+  await pages[0].locator("#start-button:not([disabled])").waitFor();
   await pages[0].locator("#start-button").click();
   await waitForAnyPagePhase(pages, "night_werewolves");
   await waitForRoles(pages);
@@ -65,15 +70,15 @@ try {
   const roleAfterReload = (await pages[0].getByTestId("role").textContent())?.trim();
   assert(roleBeforeReload === roleAfterReload, "player reconnect did not restore the same private role");
 
-  const werewolfPage = await pageWithRole(pages, "werewolf");
+  const werewolfPage = await firstVisible(pages, "#night-form");
   await submitSelectForm(werewolfPage, "#night-form");
   await waitForAnyPagePhase(pages, "night_seer");
 
-  const seerPage = await pageWithRole(pages, "seer");
+  const seerPage = await firstVisible(pages, "#night-form");
   await submitSelectForm(seerPage, "#night-form");
   await waitForAnyPagePhase(pages, "night_witch");
 
-  const witchPage = await pageWithRole(pages, "witch");
+  const witchPage = await firstVisible(pages, "#witch-form");
   await waitConnected(witchPage);
   await witchPage.locator("#witch-form").waitFor({ state: "visible" });
   await witchPage.locator('#witch-form button[type="submit"]').click();
@@ -95,7 +100,7 @@ try {
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V2 smoke passed");
+  console.log("Browser V3 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {

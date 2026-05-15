@@ -1,4 +1,5 @@
 import "./styles.css";
+import { escapeHtml } from "./render";
 
 type Phase =
   | "night_werewolves"
@@ -13,6 +14,8 @@ interface SeatView {
   nickname?: string;
   controller: "human" | "ai";
   connectionStatus: "connected" | "disconnected";
+  ready: boolean;
+  readyAt?: number;
 }
 
 interface PublicPlayerView {
@@ -39,9 +42,26 @@ interface RoomView {
     players: PublicPlayerView[];
     winner?: string;
     publicEvents: { id: string; message: string }[];
+    phaseStatus: {
+      label: string;
+      submittedCount?: number;
+      requiredCount?: number;
+    };
+    endgameReveal?: {
+      winner: string;
+      players: PublicPlayerView[];
+      timeline: { id: string; message: string }[];
+    };
   };
   chatMessages: { id: string; seatId: string; nickname: string; message: string; createdAt: number }[];
   currentDeadlineAt?: number;
+  startEligibility?: {
+    canStart: boolean;
+    occupiedSeats: number;
+    readySeats: number;
+    requiredSeats: number;
+    blockedReason?: string;
+  };
   activeSpectators?: number;
 }
 
@@ -57,6 +77,13 @@ interface PrivateView {
   witchPotions: {
     saveAvailable: boolean;
     poisonAvailable: boolean;
+  };
+  actionState: {
+    required: boolean;
+    submitted: boolean;
+    label?: string;
+    waitingFor?: string;
+    cannotActReason?: string;
   };
 }
 
@@ -166,7 +193,7 @@ function render(): void {
                     <div class="seat${host}${mine}${player && !player.alive ? " dead" : ""}">
                       <div class="seat-main">
                         <strong>${escapeHtml(seat.nickname ?? "Open")}</strong>
-                        <span><i class="status-dot ${escapeHtml(seat.connectionStatus)}"></i>${escapeHtml(seat.seatId)} · ${escapeHtml(seat.connectionStatus)}</span>
+                        <span><i class="status-dot ${escapeHtml(seat.connectionStatus)}"></i>${escapeHtml(seat.seatId)} · ${escapeHtml(seat.connectionStatus)}${seat.nickname ? ` · ${seat.ready ? "Ready" : "Not ready"}` : ""}</span>
                       </div>
                       ${player ? `<span class="seat-state">${player.alive ? "Alive" : "Dead"}${player.role ? ` · ${escapeHtml(player.role)}` : ""}</span>` : ""}
                       ${renderSeatHostActions(seat)}
@@ -175,6 +202,7 @@ function render(): void {
                 })
                 .join("")}
             </div>
+            ${renderReadyButton()}
             ${renderStartButton()}
           </section>
 
@@ -194,7 +222,7 @@ function render(): void {
             <div class="phase-row">
               <div>
                 <h2>${escapeHtml(labelPhase(game?.phase))}</h2>
-                <p>${game ? `Round ${game.round}` : `${seats.filter((seat) => seat.nickname).length}/8 seats filled`}</p>
+                <p>${game ? `Round ${game.round} · ${escapeHtml(game.phaseStatus.label)}` : `${room?.startEligibility?.occupiedSeats ?? seats.filter((seat) => seat.nickname).length}/8 seats · ${room?.startEligibility?.readySeats ?? 0} ready`}</p>
               </div>
               <div>
                 <div data-testid="phase" class="phase-chip">${escapeHtml(String(phase))}</div>
@@ -203,6 +231,7 @@ function render(): void {
             </div>
             ${renderActionPanel()}
           </section>
+          ${renderEndgamePanel()}
 
           <section class="panel">
             <div class="panel-heading">
@@ -322,8 +351,18 @@ function renderSpectator(): void {
 
 function renderStartButton(): string {
   if (!session || !room || room.status !== "lobby" || session.seatId !== room.hostSeatId) return "";
-  const full = room.seats.every((seat) => seat.nickname);
-  return `<button id="start-button" ${full ? "" : "disabled"}>Start game</button>`;
+  const eligibility = room.startEligibility;
+  return `
+    ${eligibility?.blockedReason ? `<p class="muted">${escapeHtml(eligibility.blockedReason)}</p>` : ""}
+    <button id="start-button" ${eligibility?.canStart ? "" : "disabled"}>Start game</button>
+  `;
+}
+
+function renderReadyButton(): string {
+  if (!session || !room || room.status !== "lobby") return "";
+  const mine = room.seats.find((seat) => seat.seatId === session?.seatId);
+  if (!mine?.nickname) return "";
+  return `<button id="ready-button" class="${mine.ready ? "secondary" : ""}" type="button">${mine.ready ? "Unready" : "Ready"}</button>`;
 }
 
 function renderRoomMeta(): string {
@@ -384,6 +423,7 @@ function renderPrivatePanel(): string {
         : ""
     }
     ${seerResults ? `<ul>${seerResults}</ul>` : ""}
+    <p class="muted">${escapeHtml(actionStateLabel(privateView))}</p>
   `;
 }
 
@@ -425,6 +465,42 @@ function renderActionPanel(): string {
   return `<p class="muted">Waiting for the current phase to finish.</p>`;
 }
 
+function renderEndgamePanel(): string {
+  const reveal = room?.game?.endgameReveal;
+  if (!reveal) return "";
+  return `
+    <section class="panel endgame-panel">
+      <div class="panel-heading">
+        <h2>Endgame</h2>
+        <span>${escapeHtml(reveal.winner)} win</span>
+      </div>
+      <div class="reveal-grid">
+        ${reveal.players
+          .map(
+            (player) => `
+              <div class="reveal-card">
+                <strong>${escapeHtml(player.nickname)}</strong>
+                <span>${escapeHtml(player.role ?? "unknown")} · ${player.alive ? "Alive" : "Dead"}</span>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+      <div class="event-log">
+        ${reveal.timeline.map((event) => `<p>${escapeHtml(event.message)}</p>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function actionStateLabel(view: PrivateView): string {
+  if (view.actionState.submitted) return "Submitted.";
+  if (view.actionState.waitingFor) return `Waiting for ${view.actionState.waitingFor}.`;
+  if (view.actionState.cannotActReason) return view.actionState.cannotActReason;
+  if (view.actionState.label) return view.actionState.label;
+  return "No action required.";
+}
+
 function targetForm(id: string, label: string, targets: string[], button: string): string {
   return `
     <form id="${id}" class="action-form">
@@ -460,6 +536,10 @@ function bindAuthForms(): void {
 function bindRoomActions(): void {
   document.querySelector<HTMLButtonElement>("#start-button")?.addEventListener("click", () => {
     send({ type: "start_game" });
+  });
+  document.querySelector<HTMLButtonElement>("#ready-button")?.addEventListener("click", () => {
+    const mine = room?.seats.find((seat) => seat.seatId === session?.seatId);
+    send({ type: "set_ready", ready: !mine?.ready });
   });
   document.querySelector<HTMLButtonElement>("#leave-button")?.addEventListener("click", () => {
     socket?.close();
@@ -831,17 +911,4 @@ function startTimerLoop(): void {
     const timer = document.querySelector<HTMLDivElement>("#timer");
     if (timer) timer.textContent = formatDeadline(room?.currentDeadlineAt);
   }, 500);
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => {
-    const entities: Record<string, string> = {
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    };
-    return entities[char] as string;
-  });
 }

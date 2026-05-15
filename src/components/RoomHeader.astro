@@ -1,0 +1,9 @@
+---
+const { mode = "Live room" } = Astro.props;
+---
+<header class="topbar" data-component="RoomHeader">
+  <div class="brand-block">
+    <div class="eyebrow">{mode}</div>
+    <slot />
+  </div>
+</header>

@@ -33,6 +33,15 @@ await post(`/api/rooms/${room.roomId}/host/enable-spectators`, {
   token: joined[0].token
 });
 await expectSpectatorPublicOnly(room.roomId);
+await expectHttpError(`/api/rooms/${room.roomId}/start`, 409, "POST", {
+  seatId: joined[0].seatId,
+  token: joined[0].token
+});
+for (const player of joined) {
+  await socketSend(room.roomId, player, { type: "set_ready", ready: true }, undefined);
+}
+const readyState = await get(`/api/rooms/${room.roomId}/state`);
+assert(readyState.startEligibility?.canStart === true, "start eligibility did not become ready");
 await post(`/api/rooms/${room.roomId}/start`, {
   seatId: joined[0].seatId,
   token: joined[0].token
@@ -43,6 +52,7 @@ assert(state.game?.phase === "night_werewolves", "game did not start in werewolf
 assert(!publicStateHasRoles(state), "public state leaked roles before endgame");
 assert(!JSON.stringify(state).includes("playerTokenHash"), "public state leaked token hashes");
 assert(!JSON.stringify(state).includes("socketTickets"), "public state leaked socket tickets");
+assert(!state.game.endgameReveal, "public state revealed endgame before game ended");
 await expectSpectatorPublicOnly(room.roomId);
 
 const privates = await privateViews(room.roomId, joined);
@@ -56,7 +66,7 @@ await socketSend(room.roomId, joined[wolfIndex], {
   targetId: privates[wolfIndex].legalTargets[0]
 }, "night_seer");
 
-console.log(`Remote V2 smoke passed for ${base}`);
+console.log(`Remote V3 smoke passed for ${base}`);
 
 async function get(path) {
   const response = await fetch(`${base}${path}`);
@@ -76,8 +86,12 @@ async function post(path, body) {
   return json;
 }
 
-async function expectHttpError(path, status, method = "GET") {
-  const response = await fetch(`${base}${path}`, { method });
+async function expectHttpError(path, status, method = "GET", body) {
+  const response = await fetch(`${base}${path}`, {
+    method,
+    headers: body ? { "content-type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined
+  });
   if (response.status !== status) {
     const text = await response.text();
     throw new Error(`${path} expected ${status}, got ${response.status}: ${text}`);
@@ -133,6 +147,11 @@ async function socketSend(roomId, player, message, expectedPhase) {
     const timeout = setTimeout(() => reject(new Error(`socket timeout for ${JSON.stringify(message)}`)), 10_000);
     socket.addEventListener("open", () => {
       socket.send(JSON.stringify(message));
+      if (!expectedPhase) {
+        clearTimeout(timeout);
+        socket.close();
+        resolve();
+      }
     });
     socket.addEventListener("message", (event) => {
       const payload = JSON.parse(String(event.data));

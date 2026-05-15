@@ -61,7 +61,29 @@ describe("Miller Hollow V1 engine", () => {
   it("filters hidden roles from public view before the game ends", () => {
     const game = fixedRoleGame();
     expect(toPublicView(game).players.every((player) => player.role === undefined)).toBe(true);
+    expect(toPublicView(game).endgameReveal).toBeUndefined();
     expect(toPrivatePlayerView(game, "p3").role).toBe("seer");
+  });
+
+  it("reports private action state without exposing hidden role identity publicly", () => {
+    let game = fixedRoleGame();
+    const wolfView = toPrivatePlayerView(game, "p1");
+    const villagerView = toPrivatePlayerView(game, "p5");
+
+    expect(wolfView.actionState).toMatchObject({
+      required: true,
+      submitted: false,
+      label: "Choose a victim"
+    });
+    expect(villagerView.actionState.required).toBe(false);
+    expect(toPublicView(game).phaseStatus).toEqual({
+      label: "Waiting for werewolves",
+      submittedCount: 0,
+      requiredCount: 1
+    });
+
+    game = applyCommand(game, { type: "submit_werewolf_target", actorId: "p1", targetId: "p5" }).state;
+    expect(toPublicView(game).players.find((player) => player.id === "p1")?.role).toBeUndefined();
   });
 
   it("shows werewolf teammates privately", () => {
@@ -158,7 +180,10 @@ describe("Miller Hollow V1 engine", () => {
 
     expect(game.phase).toBe("ended");
     expect(game.winner).toBe("village");
-    expect(toPublicView(game).players.find((player) => player.id === "p1")?.role).toBe("werewolf");
+    const publicView = toPublicView(game);
+    expect(publicView.players.find((player) => player.id === "p1")?.role).toBe("werewolf");
+    expect(publicView.endgameReveal?.winner).toBe("village");
+    expect(publicView.endgameReveal?.players.every((player) => player.role)).toBe(true);
   });
 
   it("detects Werewolf victory when no non-Werewolves remain", () => {

@@ -1,6 +1,6 @@
 # Miller Hollow
 
-Public-play V2 implementation for an 8-player online Werewolves of Miller's Hollow room on Astro, Cloudflare Workers, and Durable Objects.
+Basic Edition V3 implementation for an 8-player online Werewolves of Miller's Hollow room on Astro, Cloudflare Workers, and Durable Objects.
 
 This is an unofficial fan implementation and is not affiliated with the original game publisher or rights holders.
 
@@ -23,9 +23,11 @@ The playable preset is fixed to 8 players: 2 Werewolves, 1 Seer, 1 Witch, and 4 
 
 Rooms use anonymous nicknames and browser-held reconnect tokens. The server stores token hashes, owns the hidden game state, and sends each browser only public room state plus that seat's private role/action view.
 
-Hosts can copy player and spectator links, lock the lobby, toggle spectator access, kick lobby seats, transfer host, inspect redacted room diagnostics, and reset non-playing rooms.
+Hosts can copy player and spectator links, lock the lobby, toggle spectator access, kick lobby seats, transfer host, inspect redacted room diagnostics, and reset non-playing rooms. Players mark ready before the host can start.
 
 Spectators can watch from `/room/:roomId/watch` without occupying a player seat. Spectator sockets receive public room views only and never receive player private views.
+
+Endgame views reveal winner, player roles, and the public timeline only after the game ends.
 
 ## Deployment Notes
 

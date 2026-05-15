@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 - Basic Edition Complete
+
+### Added
+
+- Lobby ready/unready state and start eligibility.
+- Start is blocked until all 8 occupied seats are ready.
+- Public phase status and private player action state.
+- Endgame reveal with winner, player roles, and public timeline.
+- V3 design and implementation documents.
+- Basic edition rules, phase table, view contract, hidden-information matrix, and host authorization matrix.
+- Astro component and client module skeletons for future UI decomposition.
+
+### Changed
+
+- Player and spectator views now expose explicit readiness, phase status, and endgame-safe reveal fields.
+- Browser and API smoke coverage now ready players before start.
+
 ## 0.2.1 - Astro UI shell
 
 ### Changed

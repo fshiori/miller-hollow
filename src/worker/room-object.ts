@@ -47,6 +47,7 @@ interface ClientMessage {
   save?: boolean;
   poisonTargetId?: string;
   message?: string;
+  ready?: boolean;
 }
 
 interface RateBucket {
@@ -165,6 +166,8 @@ export class RoomObject implements DurableObject {
     seat.connectionStatus = "connected";
     seat.lastSeenAt = Date.now();
     seat.playerTokenHash = await hashToken(token);
+    seat.ready = false;
+    delete seat.readyAt;
     room.hostSeatId ??= seat.seatId;
     room.updatedAt = Date.now();
     await this.saveRoom(room);
@@ -209,6 +212,9 @@ export class RoomObject implements DurableObject {
     }
     if (room.seats.some((seat) => !seat.nickname)) {
       return json({ error: "Room is not full" }, 409);
+    }
+    if (room.seats.some((seat) => !seat.ready)) {
+      return json({ error: "All players must be ready" }, 409);
     }
 
     this.startGame(room);
@@ -485,6 +491,10 @@ export class RoomObject implements DurableObject {
       await this.startFromSocket(room, seatId);
       return;
     }
+    if (message.type === "set_ready") {
+      await this.setReady(room, seatId, Boolean(message.ready));
+      return;
+    }
     if (message.type === "day_chat") {
       await this.addChat(room, seatId, String(message.message ?? ""));
       return;
@@ -515,6 +525,9 @@ export class RoomObject implements DurableObject {
     if (room.seats.some((seat) => !seat.nickname)) {
       throw new Error("Room is not full");
     }
+    if (room.seats.some((seat) => !seat.ready)) {
+      throw new Error("All players must be ready");
+    }
     this.startGame(room);
     await this.saveRoom(room);
     await this.broadcastRoom(room);
@@ -527,8 +540,32 @@ export class RoomObject implements DurableObject {
     }));
     room.game = createGame(players, mathRandomSource);
     room.status = "playing";
+    for (const seat of room.seats) {
+      seat.ready = false;
+      delete seat.readyAt;
+    }
     this.afterGameMutation(room);
     this.logRoomEvent(room, "game_started", { occupiedSeats: room.seats.length, phase: room.game.phase });
+  }
+
+  private async setReady(room: RoomState, seatId: string, ready: boolean): Promise<void> {
+    if (room.status !== "lobby") {
+      throw new Error("Ready is only available in the lobby");
+    }
+    const seat = room.seats.find((candidate) => candidate.seatId === seatId);
+    if (!seat?.nickname) {
+      throw new Error("Unknown seat");
+    }
+    seat.ready = ready;
+    if (ready) {
+      seat.readyAt = Date.now();
+    } else {
+      delete seat.readyAt;
+    }
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    this.logRoomEvent(room, "seat_ready_changed", { seatId, ready });
+    await this.broadcastRoom(room);
   }
 
   private assertLobby(room: RoomState): void {
@@ -546,6 +583,8 @@ export class RoomObject implements DurableObject {
     delete seat.nickname;
     delete seat.playerTokenHash;
     delete seat.lastSeenAt;
+    seat.ready = false;
+    delete seat.readyAt;
     seat.connectionStatus = "disconnected";
   }
 
@@ -569,6 +608,8 @@ export class RoomObject implements DurableObject {
         delete seat.nickname;
         delete seat.playerTokenHash;
         delete seat.lastSeenAt;
+        seat.ready = false;
+        delete seat.readyAt;
         seat.connectionStatus = "disconnected";
       }
     }
@@ -788,6 +829,9 @@ export class RoomObject implements DurableObject {
       stored.chatMessages ??= [];
       stored.socketTickets ??= {};
       stored.spectatorTickets ??= {};
+      for (const seat of stored.seats) {
+        seat.ready ??= false;
+      }
       return stored;
     }
     const room = createInitialRoomState(roomId, Date.now());
@@ -856,15 +900,34 @@ export class RoomObject implements DurableObject {
         nickname: seat.nickname,
         controller: seat.controller,
         connectionStatus: seat.connectionStatus,
-        lastSeenAt: seat.lastSeenAt
+        lastSeenAt: seat.lastSeenAt,
+        ready: seat.ready ?? false,
+        readyAt: seat.readyAt
       })),
       game: room.game ? toPublicView(room.game) : undefined,
       chatMessages: room.chatMessages,
       currentDeadlineAt: room.currentDeadlineAt,
+      startEligibility: this.startEligibility(room),
       createdAt: room.createdAt,
       updatedAt: room.updatedAt,
       activeSpectators: this.spectatorSessions.size
     };
+  }
+
+  private startEligibility(room: RoomState) {
+    const occupiedSeats = room.seats.filter((seat) => seat.nickname).length;
+    const readySeats = room.seats.filter((seat) => seat.nickname && seat.ready).length;
+    const requiredSeats = room.settings.playerCount;
+    if (room.status !== "lobby") {
+      return { canStart: false, occupiedSeats, readySeats, requiredSeats, blockedReason: "Game already started" };
+    }
+    if (occupiedSeats < requiredSeats) {
+      return { canStart: false, occupiedSeats, readySeats, requiredSeats, blockedReason: "Waiting for players" };
+    }
+    if (readySeats < requiredSeats) {
+      return { canStart: false, occupiedSeats, readySeats, requiredSeats, blockedReason: "Waiting for ready players" };
+    }
+    return { canStart: true, occupiedSeats, readySeats, requiredSeats };
   }
 }
 
