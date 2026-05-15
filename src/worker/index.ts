@@ -1,15 +1,21 @@
 import { RoomObject } from "./room-object";
+import { isBasicPresetId } from "../engine";
 import type { Env } from "./env";
 
 export { RoomObject };
 
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.4.0";
 const CREATE_ROOM_LIMIT = { limit: 10, windowMs: 60_000 };
+const SMOKE_CREATE_ROOM_LIMIT = { limit: 50, windowMs: 60_000 };
 const createRoomBuckets = new Map<string, RateBucket>();
 
 interface RateBucket {
   count: number;
   resetAt: number;
+}
+
+interface CreateRoomRequest {
+  presetId?: unknown;
 }
 
 export default {
@@ -38,14 +44,28 @@ export default {
     }
 
     if (request.method === "POST" && url.pathname === "/api/rooms") {
+      const body = (await request.json().catch(() => ({}))) as CreateRoomRequest;
+      if (body.presetId !== undefined && !isBasicPresetId(body.presetId)) {
+        return Response.json({ error: "Unsupported preset" }, { status: 400 });
+      }
       const client = request.headers.get("cf-connecting-ip") ?? "local";
-      if (!takeRateLimit(createRoomBuckets, client, CREATE_ROOM_LIMIT.limit, CREATE_ROOM_LIMIT.windowMs)) {
+      const createLimit = env.MILLER_HOLLOW_TIMER_PROFILE === "smoke" ? SMOKE_CREATE_ROOM_LIMIT : CREATE_ROOM_LIMIT;
+      if (!takeRateLimit(createRoomBuckets, client, createLimit.limit, createLimit.windowMs)) {
         return Response.json({ error: "Too many rooms created. Try again soon." }, { status: 429 });
       }
       const id = env.ROOMS.newUniqueId();
       const stub = env.ROOMS.get(id);
       const joinUrl = `/room/${id.toString()}`;
       await stub.fetch(new Request(`${url.origin}/rooms/${id.toString()}/state`));
+      if (body.presetId) {
+        await stub.fetch(
+          new Request(`${url.origin}/rooms/${id.toString()}/initialize`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ presetId: body.presetId })
+          })
+        );
+      }
       return Response.json({ roomId: id.toString(), joinUrl });
     }
 

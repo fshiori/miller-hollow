@@ -171,28 +171,106 @@ Deployment:
 - Runtime build sha: `71ce1ad`
 - Worker Version ID: `eaa813c3-28d4-4397-92c5-1e72b6f6a014`
 
+## 0.3.5 - V3.5 Multi-Count Basic Presets
+
+Status:
+
+- Deployed.
+- Basic edition remains the feature baseline.
+- No new roles.
+
+Completed:
+
+- Added `basic_8`, `basic_9`, `basic_10`, `basic_11`, and `basic_12`.
+- Added shared preset helpers for engine, room state, public views, and tests.
+- Updated game creation to assign roles from the selected preset.
+- Added room-state migration for older fixed-8 rooms.
+- Added create-room preset selection.
+- Added preset-based seat creation, dynamic join capacity, ready counts, and start eligibility.
+- Added public preset summary with role counts only, not assigned roles.
+- Updated create-room flow to select player count before opening the room.
+- Updated the browser lobby to show selected preset, role mix, and dynamic seat counts.
+- Expanded local smoke to create, fill, ready, start, and verify role counts for every supported preset.
+- Added remote smoke support for `MILLER_HOLLOW_PRESET_ID=basic_12`.
+- Updated README and changelog.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=basic_8 npm run smoke:remote:quick`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=basic_12 npm run smoke:remote:full`
+
+Deployment:
+
+- URL: `https://miller-hollow.fshiori.workers.dev`
+- App version: `0.3.5`
+- Runtime build sha: `local`
+- Worker Version ID: `47850ce3-e5ab-4a70-9619-532e3d3a9827`
+- Deployed at: `2026-05-15T05:49:43Z`
+- Follow-up: player count is selected before room creation, not from inside an open lobby.
+- Note: deployed from the current working tree with `npm run deploy`; code was not pushed or tagged.
+
+## 0.4.0 - V4 Official 8-18 Preset Foundation
+
+Status:
+
+- Deployed.
+- Basic edition remains the feature baseline.
+- No new active special roles beyond the existing app-basic Witch workflow.
+
+Completed:
+
+- Added official beginner presets for 8-18 players:
+  - Werewolves
+  - Fortune Teller
+  - Ordinary Townsfolk
+- Added app-basic compatibility presets for the existing 8-12 player Witch workflow.
+- Kept legacy `basic_8` through `basic_12` ids accepted as app-basic aliases.
+- Changed new-room default to `official_basic_8`.
+- Kept player count and preset selection before room creation, fixed after the room exists.
+- Added role metadata for implemented roles and future basic-edition roles.
+- Added public preset family, rules source, and labeled role summaries.
+- Updated official no-Witch night flow to resolve deaths after the Fortune Teller action.
+- Expanded unit tests, local smoke, browser smoke, and remote smoke coverage for official 18-player rooms.
+- Updated README, changelog, rules, and view-contract docs.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_8 npm run smoke:remote:quick`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_18 npm run smoke:remote:full`
+
+Deployment:
+
+- URL: `https://miller-hollow.fshiori.workers.dev`
+- App version: `0.4.0`
+- Runtime build sha: `local`
+- Worker Version ID: `31a71388-7cac-4d61-961b-84999454b54b`
+- Deployed at: `2026-05-15T07:22:30Z`
+- Note: deploy is from the current working tree; code is not pushed or tagged.
+
 ## Planned Next Versions
 
-### V3.5 - Multi-Count Basic Presets
+### V4.5 or V5 - Complete Official Role Flow
 
 Planned:
 
-- Add 8/9/10/11/12-player basic presets.
-- Still no new roles.
-- Dynamic seat count.
-- Dynamic role assignment.
-- Host preset/player-count selection.
-- Smoke coverage for each supported count.
-
-### V4 - New Roles
-
-Planned:
-
-- Add official roles after basic presets are stable.
+- Add official special roles after the official 8-18 beginner preset foundation is stable.
 - Candidate roles:
   - Hunter
   - Captain / Sheriff
   - Cupid
   - Thief
 - Little Girl requires a separate online-safety design pass.
-

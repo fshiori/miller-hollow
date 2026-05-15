@@ -1,5 +1,5 @@
 import type { GameCommand } from "./commands";
-import { v1Preset } from "./presets";
+import { getBasicPreset, v1Preset, type BasicPresetId, type RolePreset } from "./presets";
 import type { RandomSource } from "./random";
 import { shuffleWithRandom } from "./random";
 import { teamForRole } from "./roles";
@@ -19,12 +19,13 @@ function event(type: GameEvent["type"], message: string, extra: Partial<GameEven
   };
 }
 
-export function createGame(players: GamePlayer[], random: RandomSource): GameState {
-  if (players.length !== v1Preset.playerCount) {
-    throw new Error(`V1 requires exactly ${v1Preset.playerCount} players`);
+export function createGame(players: GamePlayer[], random: RandomSource, presetInput: RolePreset | BasicPresetId = v1Preset): GameState {
+  const preset = typeof presetInput === "string" ? getBasicPreset(presetInput) : presetInput;
+  if (players.length !== preset.playerCount) {
+    throw new Error(`${preset.label} requires exactly ${preset.playerCount} players`);
   }
 
-  const roles = shuffleWithRandom<Role>(v1Preset.roles, random);
+  const roles = shuffleWithRandom<Role>(preset.roles, random);
   const assignedRoles: Record<PlayerId, Role> = {};
   const alive: Record<PlayerId, boolean> = {};
   const privateEvents: Record<PlayerId, GameEvent[]> = {};
@@ -152,11 +153,16 @@ function submitSeerTarget(state: GameState, actorId: PlayerId, targetId: PlayerI
     next.privateEvents[actorId] = [...(next.privateEvents[actorId] ?? []), privateEvent];
     events.push(privateEvent);
   }
-  next.phase = "night_witch";
-  const phaseEvent = event("phase_changed", "The Witch wakes.");
-  next.publicEvents.push(phaseEvent);
-  events.push(phaseEvent);
-  return { state: next, events };
+  if (livingPlayersWithRole(next, "witch")[0]) {
+    next.phase = "night_witch";
+    const phaseEvent = event("phase_changed", "The Witch wakes.");
+    next.publicEvents.push(phaseEvent);
+    events.push(phaseEvent);
+    return { state: next, events };
+  }
+
+  const resolved = resolveNightDeaths(next, undefined, undefined);
+  return { state: resolved.state, events: [...events, ...resolved.events] };
 }
 
 function submitWitchAction(
@@ -187,6 +193,14 @@ function submitWitchAction(
     assertLivingPlayer(state, poisonTargetId);
   }
 
+  return resolveNightDeaths(state, saveTargetId, poisonTargetId);
+}
+
+function resolveNightDeaths(
+  state: GameState,
+  saveTargetId: PlayerId | undefined,
+  poisonTargetId: PlayerId | undefined
+): ReducerResult {
   const next = cloneState(state);
   const deaths = new Set<PlayerId>();
   if (saveTargetId) {

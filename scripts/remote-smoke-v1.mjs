@@ -1,5 +1,23 @@
 const base = process.env.MILLER_HOLLOW_BASE_URL ?? "https://miller-hollow.fshiori.workers.dev";
 const wsBase = base.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+const presetCounts = {
+  official_basic_8: { players: 8, werewolf: 2, seer: 1, villager: 5 },
+  official_basic_9: { players: 9, werewolf: 2, seer: 1, villager: 6 },
+  official_basic_10: { players: 10, werewolf: 2, seer: 1, villager: 7 },
+  official_basic_11: { players: 11, werewolf: 2, seer: 1, villager: 8 },
+  official_basic_12: { players: 12, werewolf: 3, seer: 1, villager: 8 },
+  official_basic_13: { players: 13, werewolf: 3, seer: 1, villager: 9 },
+  official_basic_14: { players: 14, werewolf: 3, seer: 1, villager: 10 },
+  official_basic_15: { players: 15, werewolf: 3, seer: 1, villager: 11 },
+  official_basic_16: { players: 16, werewolf: 3, seer: 1, villager: 12 },
+  official_basic_17: { players: 17, werewolf: 3, seer: 1, villager: 13 },
+  official_basic_18: { players: 18, werewolf: 4, seer: 1, villager: 13 },
+  app_basic_8: { players: 8, werewolf: 2, seer: 1, witch: 1, villager: 4 },
+  basic_8: { players: 8, werewolf: 2, seer: 1, witch: 1, villager: 4 }
+};
+const presetId = process.env.MILLER_HOLLOW_PRESET_ID ?? "official_basic_8";
+const expectedPreset = presetCounts[presetId];
+assert(expectedPreset, `unsupported MILLER_HOLLOW_PRESET_ID ${presetId}`);
 
 const health = await get("/api/health");
 assert(health.ok === true, "health endpoint did not return ok");
@@ -9,18 +27,18 @@ const home = await fetch(base);
 assert(home.ok, `homepage failed with ${home.status}`);
 assert((home.headers.get("content-type") ?? "").includes("text/html"), "homepage did not return html");
 
-const room = await post("/api/rooms");
+const room = await post("/api/rooms", { presetId });
 const spectatorTicket = await post(`/api/rooms/${room.roomId}/spectator-ticket`);
 assert(spectatorTicket.ticket, "spectator ticket was not returned");
-const joined = [];
-for (let index = 1; index <= 8; index += 1) {
+const joined = [await post(`/api/rooms/${room.roomId}/join`, { nickname: "Remote 1" })];
+for (let index = 2; index <= expectedPreset.players; index += 1) {
   joined.push(await post(`/api/rooms/${room.roomId}/join`, { nickname: `Remote ${index}` }));
 }
 
 await expectHttpError(`/api/rooms/${room.roomId}/private?seatId=${joined[0].seatId}&token=invalid-token`, 403);
 await expectHttpError(`/api/rooms/${room.roomId}/diagnostics?seatId=${joined[0].seatId}&token=invalid-token`, 403);
 const diagnostics = await get(`/api/rooms/${room.roomId}/diagnostics?seatId=${joined[0].seatId}&token=${joined[0].token}`);
-assert(diagnostics.occupiedSeats === 8, "diagnostics did not report occupied seats");
+assert(diagnostics.occupiedSeats === expectedPreset.players, "diagnostics did not report occupied seats");
 assert(typeof diagnostics.activeSpectators === "number", "diagnostics did not report active spectators");
 assert(!JSON.stringify(diagnostics).includes("token"), "diagnostics leaked token data");
 await post(`/api/rooms/${room.roomId}/host/disable-spectators`, {
@@ -40,8 +58,8 @@ await expectHttpError(`/api/rooms/${room.roomId}/start`, 409, "POST", {
 for (const player of joined) {
   await socketSend(room.roomId, player, { type: "set_ready", ready: true }, undefined);
 }
-const readyState = await get(`/api/rooms/${room.roomId}/state`);
-assert(readyState.startEligibility?.canStart === true, "start eligibility did not become ready");
+const readyState = await waitForEligibility(room.roomId, true);
+assert(readyState.preset?.id === presetId, "public state did not report selected preset");
 await post(`/api/rooms/${room.roomId}/start`, {
   seatId: joined[0].seatId,
   token: joined[0].token
@@ -58,7 +76,8 @@ await expectSpectatorPublicOnly(room.roomId);
 const privates = await privateViews(room.roomId, joined);
 const wolfIndex = privates.findIndex((view) => view.role === "werewolf");
 assert(wolfIndex >= 0, "remote smoke could not find a werewolf");
-assert(privates[wolfIndex].werewolfTeammates.length === 1, "werewolf teammate private view missing");
+assertRoleCounts(privates, expectedPreset, presetId);
+assert(privates[wolfIndex].werewolfTeammates.length === expectedPreset.werewolf - 1, "werewolf teammate private view missing");
 assert(privates.filter((view) => view.role !== "seer").every((view) => Object.keys(view.seerResults).length === 0), "seer results leaked to non-Seer");
 
 await socketSend(room.roomId, joined[wolfIndex], {
@@ -66,7 +85,7 @@ await socketSend(room.roomId, joined[wolfIndex], {
   targetId: privates[wolfIndex].legalTargets[0]
 }, "night_seer");
 
-console.log(`Remote V3 smoke passed for ${base}`);
+console.log(`Remote V4 smoke passed for ${base} with ${presetId}`);
 
 async function get(path) {
   const response = await fetch(`${base}${path}`);
@@ -179,8 +198,28 @@ async function socketTicket(roomId, player) {
   return payload.ticket;
 }
 
+async function waitForEligibility(roomId, expectedCanStart) {
+  const started = Date.now();
+  while (Date.now() - started < 10_000) {
+    const state = await get(`/api/rooms/${roomId}/state`);
+    if (state.startEligibility?.canStart === expectedCanStart) return state;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Timed out waiting for start eligibility ${expectedCanStart}`);
+}
+
 function publicStateHasRoles(state) {
   return state.game.players.some((player) => player.role);
+}
+
+function assertRoleCounts(privates, expected, id) {
+  const counts = privates.reduce((acc, view) => {
+    acc[view.role] = (acc[view.role] ?? 0) + 1;
+    return acc;
+  }, {});
+  for (const role of ["werewolf", "seer", "witch", "villager"]) {
+    assert((counts[role] ?? 0) === (expected[role] ?? 0), `${id} expected ${expected[role] ?? 0} ${role}, got ${counts[role] ?? 0}`);
+  }
 }
 
 function assert(condition, message) {

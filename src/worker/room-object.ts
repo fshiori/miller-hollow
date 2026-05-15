@@ -2,13 +2,16 @@ import {
   applyCommand,
   buildTimeoutCommand,
   createGame,
+  getBasicPreset,
+  getPublicPresetSummary,
+  isBasicPresetId,
   mathRandomSource,
   toPrivatePlayerView,
   toPublicView,
   type GameCommand,
   type GamePlayer
 } from "../engine";
-import { createInitialRoomState, type RoomState } from "./room-state";
+import { createInitialRoomState, normalizeRoomState, occupiedSeatCount, resizeSeatsForPreset, type RoomState } from "./room-state";
 import { createToken, hashToken } from "./tokens";
 import type { Env } from "./env";
 
@@ -39,6 +42,10 @@ interface TokenRequest {
 
 interface HostSeatRequest extends TokenRequest {
   targetSeatId?: string;
+}
+
+interface InitializeRequest {
+  presetId?: string;
 }
 
 interface ClientMessage {
@@ -73,6 +80,10 @@ export class RoomObject implements DurableObject {
 
     if (request.method === "POST" && url.pathname.endsWith("/join")) {
       return this.join(roomId, request);
+    }
+
+    if (request.method === "POST" && url.pathname.endsWith("/initialize")) {
+      return this.initialize(roomId, request);
     }
 
     if (request.method === "POST" && url.pathname.endsWith("/reconnect")) {
@@ -210,7 +221,7 @@ export class RoomObject implements DurableObject {
     if (!host || host.seatId !== room.hostSeatId) {
       return json({ error: "Only the host can start" }, 403);
     }
-    if (room.seats.some((seat) => !seat.nickname)) {
+    if (occupiedSeatCount(room) !== room.settings.playerCount || room.seats.some((seat) => !seat.nickname)) {
       return json({ error: "Room is not full" }, 409);
     }
     if (room.seats.some((seat) => !seat.ready)) {
@@ -271,6 +282,22 @@ export class RoomObject implements DurableObject {
     return json(this.publicRoomView(room));
   }
 
+  private async initialize(roomId: string, request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => ({}))) as InitializeRequest;
+    const room = await this.loadRoom(roomId);
+    if (room.status !== "lobby" || occupiedSeatCount(room) > 0) {
+      return json({ error: "Room is already open" }, 409);
+    }
+    if (!isBasicPresetId(body.presetId)) {
+      return json({ error: "Unsupported preset" }, 400);
+    }
+    resizeSeatsForPreset(room, body.presetId);
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    this.logRoomEvent(room, "room_initialized", { presetId: body.presetId });
+    return json(this.publicRoomView(room));
+  }
+
   private async reset(request: Request): Promise<Response> {
     const body = (await request.json().catch(() => ({}))) as TokenRequest;
     const room = await this.loadRoom(this.state.id.toString());
@@ -287,6 +314,11 @@ export class RoomObject implements DurableObject {
     delete room.currentDeadlineAt;
     room.chatMessages = [];
     room.socketTickets = {};
+    room.spectatorTickets = {};
+    for (const seat of room.seats) {
+      seat.ready = false;
+      delete seat.readyAt;
+    }
     room.updatedAt = Date.now();
     await this.state.storage.deleteAlarm();
     await this.saveRoom(room);
@@ -522,7 +554,7 @@ export class RoomObject implements DurableObject {
     if (room.hostSeatId !== seatId) {
       throw new Error("Only the host can start");
     }
-    if (room.seats.some((seat) => !seat.nickname)) {
+    if (occupiedSeatCount(room) !== room.settings.playerCount || room.seats.some((seat) => !seat.nickname)) {
       throw new Error("Room is not full");
     }
     if (room.seats.some((seat) => !seat.ready)) {
@@ -538,7 +570,7 @@ export class RoomObject implements DurableObject {
       id: seat.seatId,
       nickname: seat.nickname as string
     }));
-    room.game = createGame(players, mathRandomSource);
+    room.game = createGame(players, mathRandomSource, room.settings.presetId);
     room.status = "playing";
     for (const seat of room.seats) {
       seat.ready = false;
@@ -824,15 +856,7 @@ export class RoomObject implements DurableObject {
   private async loadRoom(roomId: string): Promise<RoomState> {
     const stored = await this.state.storage.get<RoomState>("room");
     if (stored) {
-      stored.settings.spectatorsEnabled ??= true;
-      stored.settings.locked ??= false;
-      stored.chatMessages ??= [];
-      stored.socketTickets ??= {};
-      stored.spectatorTickets ??= {};
-      for (const seat of stored.seats) {
-        seat.ready ??= false;
-      }
-      return stored;
+      return normalizeRoomState(stored);
     }
     const room = createInitialRoomState(roomId, Date.now());
     await this.saveRoom(room);
@@ -890,10 +914,12 @@ export class RoomObject implements DurableObject {
   }
 
   private publicRoomView(room: RoomState) {
+    const preset = getBasicPreset(room.settings.presetId);
     return {
       roomId: room.roomId,
       status: room.status,
       settings: room.settings,
+      preset: getPublicPresetSummary(preset),
       hostSeatId: room.hostSeatId,
       seats: room.seats.map((seat) => ({
         seatId: seat.seatId,

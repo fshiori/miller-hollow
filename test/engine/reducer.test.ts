@@ -11,13 +11,14 @@ import {
   type RandomSource,
   type Role
 } from "../../src/engine";
+import { BASIC_PRESETS } from "../../src/engine";
 
 const zeroRandom: RandomSource = {
   nextInt: () => 0
 };
 
-function players(): GamePlayer[] {
-  return Array.from({ length: 8 }, (_, index) => ({
+function players(count = 8): GamePlayer[] {
+  return Array.from({ length: count }, (_, index) => ({
     id: `p${index + 1}`,
     nickname: `Player ${index + 1}`
   }));
@@ -42,7 +43,48 @@ function fixedRoleGame(): GameState {
 }
 
 describe("Miller Hollow V1 engine", () => {
-  it("assigns the exact V1 role preset", () => {
+  it("assigns the exact role preset for every basic player count", () => {
+    const expected = {
+      official_basic_8: { werewolf: 2, seer: 1, villager: 5 },
+      official_basic_9: { werewolf: 2, seer: 1, villager: 6 },
+      official_basic_10: { werewolf: 2, seer: 1, villager: 7 },
+      official_basic_11: { werewolf: 2, seer: 1, villager: 8 },
+      official_basic_12: { werewolf: 3, seer: 1, villager: 8 },
+      official_basic_13: { werewolf: 3, seer: 1, villager: 9 },
+      official_basic_14: { werewolf: 3, seer: 1, villager: 10 },
+      official_basic_15: { werewolf: 3, seer: 1, villager: 11 },
+      official_basic_16: { werewolf: 3, seer: 1, villager: 12 },
+      official_basic_17: { werewolf: 3, seer: 1, villager: 13 },
+      official_basic_18: { werewolf: 4, seer: 1, villager: 13 },
+      app_basic_8: { werewolf: 2, seer: 1, witch: 1, villager: 4 },
+      app_basic_9: { werewolf: 2, seer: 1, witch: 1, villager: 5 },
+      app_basic_10: { werewolf: 2, seer: 1, witch: 1, villager: 6 },
+      app_basic_11: { werewolf: 3, seer: 1, witch: 1, villager: 6 },
+      app_basic_12: { werewolf: 3, seer: 1, witch: 1, villager: 7 },
+      basic_8: { werewolf: 2, seer: 1, witch: 1, villager: 4 },
+      basic_9: { werewolf: 2, seer: 1, witch: 1, villager: 5 },
+      basic_10: { werewolf: 2, seer: 1, witch: 1, villager: 6 },
+      basic_11: { werewolf: 3, seer: 1, witch: 1, villager: 6 },
+      basic_12: { werewolf: 3, seer: 1, witch: 1, villager: 7 }
+    };
+
+    for (const preset of BASIC_PRESETS) {
+      const game = createGame(players(preset.playerCount), zeroRandom, preset.id);
+      const counts = Object.values(game.roles).reduce<Record<string, number>>((acc, role) => {
+        acc[role] = (acc[role] ?? 0) + 1;
+        return acc;
+      }, {});
+
+      expect(counts).toEqual(expected[preset.id as keyof typeof expected]);
+      expect(game.phase).toBe("night_werewolves");
+    }
+  });
+
+  it("rejects a player count that does not match the selected preset", () => {
+    expect(() => createGame(players(8), zeroRandom, "basic_9")).toThrow("requires exactly 9 players");
+  });
+
+  it("assigns the exact V1 role preset by default", () => {
     const game = createGame(players(), zeroRandom);
     const counts = Object.values(game.roles).reduce<Record<string, number>>((acc, role) => {
       acc[role] = (acc[role] ?? 0) + 1;
@@ -56,6 +98,31 @@ describe("Miller Hollow V1 engine", () => {
       villager: 4
     });
     expect(game.phase).toBe("night_werewolves");
+  });
+
+  it("keeps hidden roles private for larger official presets before endgame", () => {
+    const game = createGame(players(18), zeroRandom, "official_basic_18");
+    const publicView = toPublicView(game);
+    const privateViews = game.players.map((player) => toPrivatePlayerView(game, player.id));
+
+    expect(publicView.players).toHaveLength(18);
+    expect(publicView.players.every((player) => player.role === undefined)).toBe(true);
+    expect(publicView.endgameReveal).toBeUndefined();
+    expect(privateViews.filter((view) => view.role === "werewolf")).toHaveLength(4);
+    expect(privateViews.find((view) => view.role === "werewolf")?.werewolfTeammates).toHaveLength(3);
+  });
+
+  it("skips the Witch phase for official beginner presets", () => {
+    let game = createGame(players(8), zeroRandom, "official_basic_8");
+    const wolf = game.players.find((player) => game.roles[player.id] === "werewolf")?.id as PlayerId;
+    const seer = game.players.find((player) => game.roles[player.id] === "seer")?.id as PlayerId;
+    const target = game.players.find((player) => game.roles[player.id] === "villager")?.id as PlayerId;
+
+    game = applyCommand(game, { type: "submit_werewolf_target", actorId: wolf, targetId: target }).state;
+    expect(game.phase).toBe("night_seer");
+    game = applyCommand(game, { type: "submit_seer_target", actorId: seer, targetId: wolf }).state;
+    expect(game.phase).toBe("day_discussion");
+    expect(game.alive[target]).toBe(false);
   });
 
   it("filters hidden roles from public view before the game ends", () => {

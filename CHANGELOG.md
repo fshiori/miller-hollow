@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.4.0 - Official 8-18 Preset Foundation
+
+### Added
+
+- Official beginner presets for 8 through 18 players using Werewolves, Fortune Teller, and Ordinary Townsfolk.
+- App-basic compatibility presets for the existing 8-12 player Witch workflow.
+- Role metadata for implemented and future basic-edition roles.
+- Public preset family, rules-source, display labels, and labeled role summaries.
+- Local, browser, and remote smoke coverage for official 18-player rooms.
+- V4 design and implementation documents.
+
+### Changed
+
+- New rooms default to `official_basic_8`.
+- Player count is selected before room creation and fixed once the room exists.
+- Official presets without a Witch skip directly from Fortune Teller resolution to day discussion.
+- Legacy `basic_8` through `basic_12` ids remain accepted as app-basic aliases.
+- README, rules, view-contract, and release notes now document the official 8-18 foundation.
+
+## 0.3.5 - Multi-Count Basic Presets
+
+### Added
+
+- Basic presets for 8, 9, 10, 11, and 12 players.
+- Create-room preset selection for 8-12 player rooms.
+- Preset-based seat creation before players enter the lobby.
+- Public preset summary with player count and role counts.
+- Dynamic join capacity, ready counts, and start eligibility.
+- Local smoke coverage for every supported preset.
+- Remote smoke support for `MILLER_HOLLOW_PRESET_ID`, including non-8 deployments.
+- V3.5 design and implementation documents.
+
+### Changed
+
+- Engine game creation now accepts a selected basic preset.
+- Room state migrates older fixed-8 rooms to `basic_8`.
+- Browser smoke now captures a 12-seat lobby layout in addition to the full play path.
+- README scope now documents all supported basic presets.
+
 ## 0.3.0 - Basic Edition Complete
 
 ### Added

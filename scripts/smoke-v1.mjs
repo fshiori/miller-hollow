@@ -2,6 +2,22 @@ import { spawn } from "node:child_process";
 
 const base = "http://localhost:8787";
 const wsBase = "ws://localhost:8787";
+const presetCounts = {
+  official_basic_8: { players: 8, werewolf: 2, seer: 1, villager: 5 },
+  official_basic_9: { players: 9, werewolf: 2, seer: 1, villager: 6 },
+  official_basic_10: { players: 10, werewolf: 2, seer: 1, villager: 7 },
+  official_basic_11: { players: 11, werewolf: 2, seer: 1, villager: 8 },
+  official_basic_12: { players: 12, werewolf: 3, seer: 1, villager: 8 },
+  official_basic_13: { players: 13, werewolf: 3, seer: 1, villager: 9 },
+  official_basic_14: { players: 14, werewolf: 3, seer: 1, villager: 10 },
+  official_basic_15: { players: 15, werewolf: 3, seer: 1, villager: 11 },
+  official_basic_16: { players: 16, werewolf: 3, seer: 1, villager: 12 },
+  official_basic_17: { players: 17, werewolf: 3, seer: 1, villager: 13 },
+  official_basic_18: { players: 18, werewolf: 4, seer: 1, villager: 13 },
+  app_basic_8: { players: 8, werewolf: 2, seer: 1, witch: 1, villager: 4 },
+  app_basic_12: { players: 12, werewolf: 3, seer: 1, witch: 1, villager: 7 },
+  basic_8: { players: 8, werewolf: 2, seer: 1, witch: 1, villager: 4 }
+};
 
 const server = spawn("./node_modules/.bin/wrangler", ["dev", "--var", "MILLER_HOLLOW_TIMER_PROFILE:smoke"], {
   detached: true,
@@ -21,7 +37,9 @@ try {
   const health = await get("/api/health");
   assert(health.ok === true, "health endpoint did not return ok");
   assert(health.storage === "durable_object_sqlite", "health endpoint returned unexpected storage");
-  const room = await post("/api/rooms");
+  await expectHttpError("/api/rooms", 400, { presetId: "unsupported" });
+  await smokeAllPresetStarts();
+  const room = await post("/api/rooms", { presetId: "app_basic_8" });
   const joined = [];
   const spectatorTicket = await post(`/api/rooms/${room.roomId}/spectator-ticket`);
   assert(spectatorTicket.ticket, "spectator ticket was not returned");
@@ -159,7 +177,7 @@ try {
   }
   await waitForNotPhase(room.roomId, "day_vote", 5_000);
   assert(!publicStateHasRoles(await get(`/api/rooms/${room.roomId}/state`)), "public state leaked roles after non-end vote");
-  console.log("V3 smoke passed");
+  console.log("V4 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");
@@ -182,6 +200,38 @@ async function get(path) {
   const json = await response.json();
   if (!response.ok) throw new Error(`${path} failed: ${JSON.stringify(json)}`);
   return json;
+}
+
+async function smokeAllPresetStarts() {
+  for (const presetId of Object.keys(presetCounts)) {
+    const expected = presetCounts[presetId];
+    const room = await post("/api/rooms", { presetId });
+    const joined = [await post(`/api/rooms/${room.roomId}/join`, { nickname: `${presetId} Host` })];
+    const created = await get(`/api/rooms/${room.roomId}/state`);
+    assert(created.settings.presetId === presetId, `${presetId} was not selected at create time`);
+    assert(created.seats.length === expected.players, `${presetId} did not create the expected seats`);
+    while (joined.length < expected.players) {
+      joined.push(await post(`/api/rooms/${room.roomId}/join`, { nickname: `${presetId} ${joined.length + 1}` }));
+    }
+    await expectHttpError(`/api/rooms/${room.roomId}/join`, 409, { nickname: `${presetId} Overflow` });
+    for (const player of joined) {
+      await socketSend(room.roomId, player, { type: "set_ready", ready: true }, undefined);
+    }
+    await waitForEligibility(room.roomId, true);
+    await post(`/api/rooms/${room.roomId}/start`, {
+      seatId: joined[0].seatId,
+      token: joined[0].token
+    });
+    const started = await get(`/api/rooms/${room.roomId}/state`);
+    assert(started.game?.phase === "night_werewolves", `${presetId} did not start`);
+    assert(started.preset?.id === presetId, `${presetId} public preset missing`);
+    assert(!publicStateHasRoles(started), `${presetId} public state leaked roles`);
+    assert(!started.game.endgameReveal, `${presetId} revealed endgame early`);
+    const privates = await privateViews(room.roomId, joined);
+    assertRoleCounts(privates, expected, presetId);
+    const wolf = privates.find((view) => view.role === "werewolf");
+    assert(wolf.werewolfTeammates.length === expected.werewolf - 1, `${presetId} werewolf teammates mismatch`);
+  }
 }
 
 async function post(path, body) {
@@ -340,8 +390,28 @@ async function waitForNotPhase(roomId, phase, timeoutMs) {
   throw new Error(`Timed out waiting to leave phase ${phase}`);
 }
 
+async function waitForEligibility(roomId, expectedCanStart) {
+  const started = Date.now();
+  while (Date.now() - started < 10_000) {
+    const state = await get(`/api/rooms/${roomId}/state`);
+    if (state.startEligibility?.canStart === expectedCanStart) return;
+    await delay(250);
+  }
+  throw new Error(`Timed out waiting for start eligibility ${expectedCanStart}`);
+}
+
 function publicStateHasRoles(state) {
   return state.game.players.some((player) => player.role);
+}
+
+function assertRoleCounts(privates, expected, presetId) {
+  const counts = privates.reduce((acc, view) => {
+    acc[view.role] = (acc[view.role] ?? 0) + 1;
+    return acc;
+  }, {});
+  for (const role of ["werewolf", "seer", "witch", "villager"]) {
+    assert((counts[role] ?? 0) === (expected[role] ?? 0), `${presetId} expected ${expected[role] ?? 0} ${role}, got ${counts[role] ?? 0}`);
+  }
 }
 
 function assert(condition, message) {

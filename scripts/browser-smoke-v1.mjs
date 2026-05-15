@@ -26,7 +26,19 @@ try {
   const spectatorPage = await spectatorContext.newPage();
 
   await pages[0].goto(base);
+  await pages[0].locator('#create-form input[name="nickname"]').fill("Browser 18 Host");
+  await pages[0].locator('#create-form select[name="presetId"]').selectOption("official_basic_18");
+  await pages[0].locator('#create-form button[type="submit"]').click();
+  await pages[0].getByTestId("room-id").waitFor();
+  await pages[0].locator(".room-meta").filter({ hasText: "18-player official beginner" }).waitFor();
+  await pages[0].locator(".seat").nth(17).waitFor();
+  await pages[0].screenshot({ path: ".wrangler/browser-smoke-desktop-lobby-18.png", fullPage: true });
+  await pages[0].locator("#leave-button").click();
+  await pages[0].locator("#create-form").waitFor();
+
+  await pages[0].goto(base);
   await pages[0].locator('#create-form input[name="nickname"]').fill("Browser 1");
+  await pages[0].locator('#create-form select[name="presetId"]').selectOption("official_basic_8");
   await pages[0].locator('#create-form button[type="submit"]').click();
   await pages[0].getByTestId("room-id").waitFor();
   const roomId = (await pages[0].getByTestId("room-id").textContent())?.trim();
@@ -76,12 +88,6 @@ try {
 
   const seerPage = await firstVisible(pages, "#night-form");
   await submitSelectForm(seerPage, "#night-form");
-  await waitForAnyPagePhase(pages, "night_witch");
-
-  const witchPage = await firstVisible(pages, "#witch-form");
-  await waitConnected(witchPage);
-  await witchPage.locator("#witch-form").waitFor({ state: "visible" });
-  await witchPage.locator('#witch-form button[type="submit"]').click();
   await waitForAnyPagePhase(pages, "day_discussion");
 
   const chatPage = await firstVisible(pages, '#chat-form input:not([disabled])');
@@ -100,7 +106,7 @@ try {
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V3 smoke passed");
+  console.log("Browser V4 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {

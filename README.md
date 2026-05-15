@@ -1,6 +1,6 @@
 # Miller Hollow
 
-Basic Edition V3 implementation for an 8-player online Werewolves of Miller's Hollow room on Astro, Cloudflare Workers, and Durable Objects.
+Basic Edition V4 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
 
 This is an unofficial fan implementation and is not affiliated with the original game publisher or rights holders.
 
@@ -10,16 +10,38 @@ This is an unofficial fan implementation and is not affiliated with the original
 - `npm run typecheck` runs TypeScript checks.
 - `npm test` runs engine unit tests.
 - `npm run build` builds the browser assets and typechecks the Worker.
-- `npm run smoke:v1` starts Wrangler and exercises room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, WebSocket night actions, day chat, timer-driven vote start, and vote resolution.
-- `npm run smoke:browser` starts Wrangler and drives 8 isolated Chromium browser contexts plus a spectator through create, join, watch, reconnect, start, night actions, day chat, timer-driven vote start, voting, and responsive screenshots.
-- `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev`.
+- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, WebSocket night actions, day chat, timer-driven vote start, and vote resolution.
+- `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus a spectator through create, join, watch, reconnect, start, night actions, day chat, timer-driven vote start, voting, and responsive screenshots including an 18-seat lobby.
+- `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev` and `MILLER_HOLLOW_PRESET_ID=official_basic_18`.
 - `npm run deploy:versioned` deploys with `MILLER_HOLLOW_BUILD_SHA` set from the current git commit.
 - `npm run deploy:dry-run` validates the Worker bundle and Cloudflare configuration without publishing.
 - `npm run secrets:check` scans tracked files for common accidentally committed secret patterns.
 
-## V1 Scope
+## Basic Edition Scope
 
-The playable preset is fixed to 8 players: 2 Werewolves, 1 Seer, 1 Witch, and 4 Ordinary Villagers.
+The official beginner presets are:
+
+- `official_basic_8`: 2 Werewolves, 1 Fortune Teller, 5 Ordinary Townsfolk.
+- `official_basic_9`: 2 Werewolves, 1 Fortune Teller, 6 Ordinary Townsfolk.
+- `official_basic_10`: 2 Werewolves, 1 Fortune Teller, 7 Ordinary Townsfolk.
+- `official_basic_11`: 2 Werewolves, 1 Fortune Teller, 8 Ordinary Townsfolk.
+- `official_basic_12`: 3 Werewolves, 1 Fortune Teller, 8 Ordinary Townsfolk.
+- `official_basic_13`: 3 Werewolves, 1 Fortune Teller, 9 Ordinary Townsfolk.
+- `official_basic_14`: 3 Werewolves, 1 Fortune Teller, 10 Ordinary Townsfolk.
+- `official_basic_15`: 3 Werewolves, 1 Fortune Teller, 11 Ordinary Townsfolk.
+- `official_basic_16`: 3 Werewolves, 1 Fortune Teller, 12 Ordinary Townsfolk.
+- `official_basic_17`: 3 Werewolves, 1 Fortune Teller, 13 Ordinary Townsfolk.
+- `official_basic_18`: 4 Werewolves, 1 Fortune Teller, 13 Ordinary Townsfolk.
+
+The app-basic compatibility presets remain available through the engine/API for existing rooms and regression coverage, but the main create-room UI uses the official 8-18 player flow:
+
+- `app_basic_8`: 2 Werewolves, 1 Seer, 1 Witch, 4 Ordinary Villagers.
+- `app_basic_9`: 2 Werewolves, 1 Seer, 1 Witch, 5 Ordinary Villagers.
+- `app_basic_10`: 2 Werewolves, 1 Seer, 1 Witch, 6 Ordinary Villagers.
+- `app_basic_11`: 3 Werewolves, 1 Seer, 1 Witch, 6 Ordinary Villagers.
+- `app_basic_12`: 3 Werewolves, 1 Seer, 1 Witch, 7 Ordinary Villagers.
+
+Legacy `basic_8` through `basic_12` ids remain accepted as aliases for the app-basic presets.
 
 Rooms use anonymous nicknames and browser-held reconnect tokens. The server stores token hashes, owns the hidden game state, and sends each browser only public room state plus that seat's private role/action view.
 
@@ -39,7 +61,7 @@ Endgame views reveal winner, player roles, and the public timeline only after th
 - Durable Object class: `RoomObject`
 - Default timer profile: `MILLER_HOLLOW_TIMER_PROFILE = "production"`
 
-V1 uses Cloudflare Workers, Workers Static Assets, and one SQLite-backed Durable Object class for room/game storage. It does not require D1, KV, R2, Queues, or a separate database service.
+Miller Hollow uses Cloudflare Workers, Workers Static Assets, and one SQLite-backed Durable Object class for room/game storage. It does not require D1, KV, R2, Queues, or a separate database service.
 
 The frontend is an Astro static shell with a client-side TypeScript app. The Worker serves the generated static assets and owns all API, WebSocket, and Durable Object routes.
 

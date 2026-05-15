@@ -30,10 +30,18 @@ interface RoomView {
   status: "lobby" | "playing" | "ended";
   hostSeatId?: string;
   settings: {
-    playerCount: 8;
+    playerCount: number;
     presetId: string;
     spectatorsEnabled: boolean;
     locked: boolean;
+  };
+  preset?: {
+    id: string;
+    family: "official_basic" | "app_basic";
+    label: string;
+    rulesSource: "official_rulebook" | "miller_hollow_app";
+    playerCount: number;
+    roleSummary: Array<{ role: string; label: string; count: number }>;
   };
   seats: SeatView[];
   game?: {
@@ -133,12 +141,20 @@ function render(): void {
           <header class="masthead">
             <div class="eyebrow">Hidden-role table</div>
             <h1>Miller Hollow</h1>
-            <p>8 players. One village. No moderator needed.</p>
+            <p>8-18 players. One village. No moderator needed.</p>
           </header>
           <div class="panel auth-panel">
             <form id="create-form" class="auth-card primary-auth">
               <h2>Create</h2>
               <label>Nickname<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
+              <label>Players
+                <select name="presetId">
+                  ${Array.from({ length: 11 }, (_, index) => {
+                    const count = index + 8;
+                    return `<option value="official_basic_${count}">${count} players</option>`;
+                  }).join("")}
+                </select>
+              </label>
               <button type="submit">Create room</button>
             </form>
             <form id="join-form" class="auth-card">
@@ -157,6 +173,7 @@ function render(): void {
   }
 
   const seats = room?.seats ?? [];
+  const requiredSeats = room?.startEligibility?.requiredSeats ?? room?.preset?.playerCount ?? room?.settings.playerCount ?? seats.length;
   const game = room?.game;
   const phase = game?.phase ?? "Lobby";
   const playerById = new Map(game?.players.map((player) => [player.id, player]) ?? []);
@@ -181,7 +198,7 @@ function render(): void {
           <section class="panel seat-panel">
             <div class="panel-heading">
               <h2>Village Seats</h2>
-              <span>${seats.filter((seat) => seat.nickname).length}/8</span>
+              <span>${seats.filter((seat) => seat.nickname).length}/${requiredSeats}</span>
             </div>
             <div class="seat-list table-grid">
               ${seats
@@ -222,7 +239,7 @@ function render(): void {
             <div class="phase-row">
               <div>
                 <h2>${escapeHtml(labelPhase(game?.phase))}</h2>
-                <p>${game ? `Round ${game.round} · ${escapeHtml(game.phaseStatus.label)}` : `${room?.startEligibility?.occupiedSeats ?? seats.filter((seat) => seat.nickname).length}/8 seats · ${room?.startEligibility?.readySeats ?? 0} ready`}</p>
+                <p>${game ? `Round ${game.round} · ${escapeHtml(game.phaseStatus.label)}` : `${room?.startEligibility?.occupiedSeats ?? seats.filter((seat) => seat.nickname).length}/${requiredSeats} seats · ${room?.startEligibility?.readySeats ?? 0} ready`}</p>
               </div>
               <div>
                 <div data-testid="phase" class="phase-chip">${escapeHtml(String(phase))}</div>
@@ -274,6 +291,7 @@ function render(): void {
 
 function renderSpectator(): void {
   const seats = room?.seats ?? [];
+  const requiredSeats = room?.startEligibility?.requiredSeats ?? room?.preset?.playerCount ?? room?.settings.playerCount ?? seats.length;
   const game = room?.game;
   const phase = game?.phase ?? "Lobby";
   const playerById = new Map(game?.players.map((player) => [player.id, player]) ?? []);
@@ -286,6 +304,7 @@ function renderSpectator(): void {
           <p>Room <code data-testid="room-id">${escapeHtml(spectatorRoomId)}</code></p>
         </div>
         <div class="top-actions">
+          ${renderRoomMeta()}
           <div class="status-pill">${escapeHtml(connectionStatus)}</div>
           <a class="button-link secondary" href="/room/${escapeHtml(spectatorRoomId)}">Join</a>
         </div>
@@ -316,7 +335,7 @@ function renderSpectator(): void {
             <div class="phase-row">
               <div>
                 <h2>${escapeHtml(labelPhase(game?.phase))}</h2>
-                <p>${game ? `Round ${game.round}` : `${seats.filter((seat) => seat.nickname).length}/8 seats filled`}</p>
+                <p>${game ? `Round ${game.round}` : `${seats.filter((seat) => seat.nickname).length}/${requiredSeats} seats filled`}</p>
               </div>
               <div>
                 <div data-testid="phase" class="phase-chip">${escapeHtml(String(phase))}</div>
@@ -370,6 +389,7 @@ function renderRoomMeta(): string {
   return `
     <div class="room-meta">
       <span>${room.status}</span>
+      <span>${escapeHtml(room.preset?.label ?? `${room.settings.playerCount}-player basic`)}</span>
       <span>${room.settings.locked ? "Locked" : "Open"}</span>
       <span>${room.settings.spectatorsEnabled ? "Watch on" : "Watch off"}</span>
       ${typeof room.activeSpectators === "number" ? `<span>${room.activeSpectators} watching</span>` : ""}
@@ -382,6 +402,7 @@ function renderHostTools(): string {
   return `
     <section class="panel tools-panel">
       <h2>Room Tools</h2>
+      ${renderRoleSummary()}
       <div class="tool-row">
         <button id="copy-link-button" class="secondary" type="button">Copy link</button>
         <button id="copy-watch-link-button" class="secondary" type="button">Watch link</button>
@@ -392,6 +413,12 @@ function renderHostTools(): string {
       ${room.status !== "playing" ? `<button id="reset-button" type="button">Reset lobby</button>` : ""}
     </section>
   `;
+}
+
+function renderRoleSummary(): string {
+  const summary = room?.preset?.roleSummary ?? [];
+  if (!summary.length) return "";
+  return `<p class="muted">${summary.map((entry) => `${entry.count} ${entry.label ?? entry.role}`).map(escapeHtml).join(" · ")}</p>`;
 }
 
 function renderSeatHostActions(seat: SeatView): string {
@@ -429,7 +456,8 @@ function renderPrivatePanel(): string {
 
 function renderActionPanel(): string {
   if (!room?.game || !privateView) {
-    return `<p class="muted">The game begins after all 8 seats are occupied and the host starts.</p>`;
+    const requiredSeats = room?.startEligibility?.requiredSeats ?? room?.preset?.playerCount ?? 8;
+    return `<p class="muted">The game begins after all ${requiredSeats} seats are occupied, ready, and the host starts.</p>`;
   }
   if (room.game.winner) {
     return `<div class="result">${escapeHtml(room.game.winner)} win.</div>`;
@@ -519,9 +547,15 @@ function bindAuthForms(): void {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
     const nickname = String(new FormData(form).get("nickname") ?? "");
+    const presetId = String(new FormData(form).get("presetId") ?? "official_basic_8");
     await runUiAction(async () => {
-      const roomResponse = await fetch("/api/rooms", { method: "POST" });
+      const roomResponse = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ presetId })
+      });
       const created = (await roomResponse.json()) as { roomId: string };
+      if (!roomResponse.ok) throw new Error("Create room failed");
       await joinRoom(created.roomId, nickname);
     });
   });

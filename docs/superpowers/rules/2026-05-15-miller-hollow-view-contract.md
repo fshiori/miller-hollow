@@ -7,6 +7,7 @@ Date: 2026-05-15
 May include:
 
 - Room id, status, settings, host seat id.
+- Selected public preset id, family, rules source, label, player count, and labeled role-count summary.
 - Seat nicknames, connection status, ready state, and last seen time.
 - Public game phase, round, alive/dead status, public events, phase status.
 - Public chat messages.
@@ -48,4 +49,3 @@ Spectators must never receive:
 - Token hashes.
 - Private role data before endgame.
 - Action controls.
-
