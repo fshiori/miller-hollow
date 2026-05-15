@@ -149,7 +149,7 @@ try {
   }
   await waitForNotPhase(room.roomId, "day_vote", 5_000);
   assert(!publicStateHasRoles(await get(`/api/rooms/${room.roomId}/state`)), "public state leaked roles after non-end vote");
-  console.log("V1 smoke passed");
+  console.log("V2 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");

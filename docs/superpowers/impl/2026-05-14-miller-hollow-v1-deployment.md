@@ -23,8 +23,9 @@ V1 does not need D1, KV, R2, Queues, Workers AI, Analytics Engine, or a separate
 
 - Public endpoint: `https://miller-hollow.fshiori.workers.dev`
 - Health endpoint: `https://miller-hollow.fshiori.workers.dev/api/health`
-- Current deployed version ID: `18639dd0-434e-444c-a6a6-63a70ee8000b`
-- Current app version before V2 deploy: `0.1.1`
+- Current deployed version ID: `e70fd7fb-1129-46a4-be3d-385f7d6740e7`
+- Current app version: `0.2.0`
+- Current runtime build sha: `548def9`
 - Verified on: 2026-05-15
 
 ## Pre-Deploy Verification

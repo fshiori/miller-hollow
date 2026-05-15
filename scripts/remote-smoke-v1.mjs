@@ -56,7 +56,7 @@ await socketSend(room.roomId, joined[wolfIndex], {
   targetId: privates[wolfIndex].legalTargets[0]
 }, "night_seer");
 
-console.log(`Remote V1 smoke passed for ${base}`);
+console.log(`Remote V2 smoke passed for ${base}`);
 
 async function get(path) {
   const response = await fetch(`${base}${path}`);
