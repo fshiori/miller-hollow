@@ -23,8 +23,8 @@ V1 does not need D1, KV, R2, Queues, Workers AI, Analytics Engine, or a separate
 
 - Public endpoint: `https://miller-hollow.fshiori.workers.dev`
 - Health endpoint: `https://miller-hollow.fshiori.workers.dev/api/health`
-- V1 deployed version ID: `54953d1f-0454-48c2-bde9-17fc6d76539b`
-- Verified on: 2026-05-14
+- V1 deployed version ID: `18639dd0-434e-444c-a6a6-63a70ee8000b`
+- Verified on: 2026-05-15
 
 ## Pre-Deploy Verification
 
@@ -84,7 +84,8 @@ The first deploy applies Durable Object migration tag `v1` and creates the `Room
 - WebSockets must use short-lived single-use socket tickets, not reconnect tokens.
 - `/api/health` must avoid room state, tokens, account secrets, and player-specific data.
 - Room creation, socket-ticket creation, socket actions, and day chat have basic per-isolate/per-room rate limits.
-- Logs should avoid dumping full room snapshots or raw game state.
+- Host-only room diagnostics expose redacted counters only: seat counts, active sockets, pending socket tickets, phase, deadline, and timestamps.
+- Logs use redacted JSON events and avoid full room snapshots, raw game state, reconnect tokens, socket tickets, token hashes, and private views.
 - The default timer profile should remain `production` in `wrangler.toml`.
 
 ## FlareGuard Permission Surface
@@ -99,7 +100,8 @@ The deploy proxy needs only the endpoints Wrangler uses to upload and publish th
 
 Wrangler may also attempt `PATCH /accounts/:account_id/workers/scripts/:script_name/script-settings` to apply service/environment tags. That failure has been non-blocking for this project; grant it only if FlareGuard wants the deploy output completely warning-free.
 
-## Known Follow-Ups
+## Remaining External Follow-Ups
 
-- Add redacted production observability around room count, active sockets, and phase transitions.
-- Add a staging environment once a Cloudflare account/project naming convention exists.
+- Push requires local GitHub authentication if the target machine is not already authenticated.
+- The FlareGuard `script-settings` grant is optional and only removes the non-blocking service/environment tags warning.
+- Add a staging environment if the project later needs separate preview and production deployments.

@@ -142,7 +142,8 @@ code {
 .main-column,
 .auth-grid,
 .action-form,
-.inline-form {
+.inline-form,
+.tool-row {
   display: grid;
   gap: 14px;
 }
@@ -302,6 +303,10 @@ label {
 
 .inline-form {
   grid-template-columns: 1fr auto;
+}
+
+.tool-row {
+  grid-template-columns: 1fr 1fr;
 }
 
 .muted {

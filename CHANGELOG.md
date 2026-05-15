@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.1 - V1 follow-up hardening
+
+### Added
+
+- Host-only redacted room diagnostics.
+- Host room tools for copying room links and resetting non-playing rooms.
+- Redacted operational event logs for joins, starts, resets, player actions, and game end.
+- Smoke coverage for diagnostics authentication and reset authorization.
+
+### Changed
+
+- Remote room links now prefill the join form from `/room/:roomId`.
+- Follow-up documentation now treats rate limits and redacted observability as completed V1 hardening.
+
 ## 0.1.0 - Miller Hollow V1
 
 Initial playable V1 implementation.
@@ -18,6 +32,10 @@ Initial playable V1 implementation.
 - V1 design, implementation, hardening, and rule-decision documentation.
 - Short-lived single-use WebSocket tickets.
 - Production and smoke timer profiles.
+- Basic rate limits for room creation, socket-ticket creation, socket actions, and day chat.
+- Host-only redacted diagnostics and redacted operational event logs.
+- Host room tools for copying room links and resetting non-playing rooms.
+- Remote deployment smoke test via `npm run smoke:remote`.
 
 ### V1 Decisions
 
@@ -28,8 +46,7 @@ Initial playable V1 implementation.
 - Night public chat and dead-player chat are disabled.
 - Roles are revealed publicly only after endgame.
 
-### Known Follow-Ups
+### Remaining Follow-Ups
 
-- Add rate limiting for room creation and message submission.
-- Add deployment observability with explicit hidden-state redaction.
 - Extend browser coverage with responsive screenshots and explicit disconnect/reconnect UI assertions.
+- Add a staging environment if maintainers need separate preview and production deployments.

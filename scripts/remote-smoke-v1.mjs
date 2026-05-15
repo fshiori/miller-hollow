@@ -16,6 +16,10 @@ for (let index = 1; index <= 8; index += 1) {
 }
 
 await expectHttpError(`/api/rooms/${room.roomId}/private?seatId=${joined[0].seatId}&token=invalid-token`, 403);
+await expectHttpError(`/api/rooms/${room.roomId}/diagnostics?seatId=${joined[0].seatId}&token=invalid-token`, 403);
+const diagnostics = await get(`/api/rooms/${room.roomId}/diagnostics?seatId=${joined[0].seatId}&token=${joined[0].token}`);
+assert(diagnostics.occupiedSeats === 8, "diagnostics did not report occupied seats");
+assert(!JSON.stringify(diagnostics).includes("token"), "diagnostics leaked token data");
 await post(`/api/rooms/${room.roomId}/start`, {
   seatId: joined[0].seatId,
   token: joined[0].token

@@ -26,6 +26,9 @@ Date: 2026-05-14
 - Added `npm run smoke:browser`, which uses 8 isolated Playwright Chromium browser contexts to exercise the real browser UI.
 - Replaced reconnect-token WebSocket URLs with short-lived single-use socket tickets.
 - Split timers into `production` and `smoke` profiles through `MILLER_HOLLOW_TIMER_PROFILE`.
+- Added basic public abuse controls for room creation, socket-ticket creation, socket actions, and day chat.
+- Added host-only diagnostics with redacted operational counters.
+- Added redacted JSON event logs for joins, starts, resets, player actions, and game end.
 - Documented local verification and deployment commands in `README.md`.
 
 ## V1 Security Boundaries
@@ -36,11 +39,10 @@ Date: 2026-05-14
 - Reconnect tokens are generated client-facing secrets and stored server-side only as SHA-256 hashes.
 - WebSocket connections use single-use tickets issued through a token-authenticated HTTP endpoint.
 - No production-path code logs full room snapshots or hidden game state.
+- Diagnostics and logs must not include reconnect tokens, token hashes, socket ticket values, private views, or full room state.
 
 ## Remaining Future Hardening
 
 These are outside the current V1 completion pass:
 
 - Extend Playwright coverage with responsive layout screenshots and explicit disconnect/reconnect UI assertions.
-- Add rate limiting or abuse controls for public room creation.
-- Add deployment-specific observability that redacts hidden state.

@@ -77,6 +77,10 @@ export class RoomObject implements DurableObject {
       return this.start(request);
     }
 
+    if (request.method === "POST" && url.pathname.endsWith("/reset")) {
+      return this.reset(request);
+    }
+
     if (request.method === "POST" && url.pathname.endsWith("/socket-ticket")) {
       return this.createSocketTicket(request);
     }
@@ -88,6 +92,10 @@ export class RoomObject implements DurableObject {
 
     if (request.method === "GET" && url.pathname.endsWith("/private")) {
       return this.privateView(request);
+    }
+
+    if (request.method === "GET" && url.pathname.endsWith("/diagnostics")) {
+      return this.diagnostics(request);
     }
 
     if (request.method === "GET" && url.pathname.endsWith("/socket")) {
@@ -140,6 +148,7 @@ export class RoomObject implements DurableObject {
     room.hostSeatId ??= seat.seatId;
     room.updatedAt = Date.now();
     await this.saveRoom(room);
+    this.logRoomEvent(room, "seat_joined", { seatId: seat.seatId, occupiedSeats: room.seats.filter((candidate) => candidate.nickname).length });
     await this.broadcastRoom(room);
 
     return json({
@@ -188,6 +197,30 @@ export class RoomObject implements DurableObject {
     return json(this.publicRoomView(room));
   }
 
+  private async reset(request: Request): Promise<Response> {
+    const body = (await request.json().catch(() => ({}))) as TokenRequest;
+    const room = await this.loadRoom(this.state.id.toString());
+    const host = await this.authenticate(room, body.seatId, body.token);
+    if (!host || host.seatId !== room.hostSeatId) {
+      return json({ error: "Only the host can reset" }, 403);
+    }
+    if (room.status === "playing") {
+      return json({ error: "Playing games cannot be reset" }, 409);
+    }
+
+    room.status = "lobby";
+    delete room.game;
+    delete room.currentDeadlineAt;
+    room.chatMessages = [];
+    room.socketTickets = {};
+    room.updatedAt = Date.now();
+    await this.state.storage.deleteAlarm();
+    await this.saveRoom(room);
+    this.logRoomEvent(room, "room_reset", { occupiedSeats: room.seats.filter((seat) => seat.nickname).length });
+    await this.broadcastRoom(room);
+    return json(this.publicRoomView(room));
+  }
+
   private async privateView(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const room = await this.loadRoom(this.state.id.toString());
@@ -197,6 +230,31 @@ export class RoomObject implements DurableObject {
     }
     return json({
       privateView: room.game ? toPrivatePlayerView(room.game, seat.seatId) : undefined
+    });
+  }
+
+  private async diagnostics(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const room = await this.loadRoom(this.state.id.toString());
+    const seat = await this.authenticate(room, url.searchParams.get("seatId"), url.searchParams.get("token"));
+    if (!seat || seat.seatId !== room.hostSeatId) {
+      return json({ error: "Only the host can read diagnostics" }, 403);
+    }
+
+    return json({
+      roomId: room.roomId,
+      status: room.status,
+      phase: room.game?.phase,
+      round: room.game?.round,
+      winner: room.game?.winner,
+      occupiedSeats: room.seats.filter((candidate) => candidate.nickname).length,
+      connectedSeats: room.seats.filter((candidate) => candidate.connectionStatus === "connected").length,
+      activeSockets: this.sessions.size,
+      pendingSocketTickets: Object.keys(room.socketTickets).length,
+      chatMessages: room.chatMessages.length,
+      currentDeadlineAt: room.currentDeadlineAt,
+      createdAt: room.createdAt,
+      updatedAt: room.updatedAt
     });
   }
 
@@ -304,6 +362,7 @@ export class RoomObject implements DurableObject {
     if (command.type === "submit_vote") {
       this.resolveVoteIfComplete(room);
     }
+    this.logRoomEvent(room, "player_action", { seatId, action: command.type, phase: room.game.phase });
     this.afterGameMutation(room);
     await this.saveRoom(room);
     await this.broadcastRoom(room);
@@ -332,6 +391,7 @@ export class RoomObject implements DurableObject {
     room.game = createGame(players, mathRandomSource);
     room.status = "playing";
     this.afterGameMutation(room);
+    this.logRoomEvent(room, "game_started", { occupiedSeats: room.seats.length, phase: room.game.phase });
   }
 
   private messageToCommand(room: RoomState, seatId: string, message: ClientMessage): GameCommand {
@@ -419,6 +479,9 @@ export class RoomObject implements DurableObject {
       void this.state.storage.setAlarm(room.currentDeadlineAt);
     }
     room.updatedAt = Date.now();
+    if (room.game?.phase === "ended") {
+      this.logRoomEvent(room, "game_ended", { winner: room.game.winner });
+    }
   }
 
   private phaseSeconds(): Record<string, number> {
@@ -445,6 +508,20 @@ export class RoomObject implements DurableObject {
     for (const [key, bucket] of this.rateBuckets) {
       if (bucket.resetAt <= now) this.rateBuckets.delete(key);
     }
+  }
+
+  private logRoomEvent(room: RoomState, event: string, detail: Record<string, unknown> = {}): void {
+    console.info(
+      JSON.stringify({
+        service: "miller-hollow",
+        event,
+        roomId: room.roomId,
+        status: room.status,
+        phase: room.game?.phase,
+        activeSockets: this.sessions.size,
+        ...detail
+      })
+    );
   }
 
   private resolveVoteIfComplete(room: RoomState): void {

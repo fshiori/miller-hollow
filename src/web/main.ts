@@ -70,6 +70,7 @@ let socket: WebSocket | undefined;
 let timerHandle: number | undefined;
 let connectionStatus: "offline" | "connecting" | "connected" | "reconnecting" = session ? "connecting" : "offline";
 let statusMessage = "";
+const roomIdFromPath = location.pathname.match(/^\/room\/([^/]+)$/)?.[1] ?? "";
 
 void boot();
 
@@ -98,7 +99,7 @@ function render(): void {
           </form>
           <form id="join-form">
             <h2>Join</h2>
-            <label>Room id<input name="roomId" required /></label>
+            <label>Room id<input name="roomId" required value="${escapeHtml(roomIdFromPath)}" /></label>
             <label>Nickname<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
             <button type="submit">Join room</button>
           </form>
@@ -150,6 +151,8 @@ function render(): void {
             </div>
             ${renderStartButton()}
           </section>
+
+          ${renderHostTools()}
 
           <section class="panel">
             <h2>Your Role</h2>
@@ -209,6 +212,20 @@ function renderStartButton(): string {
   if (!session || !room || room.status !== "lobby" || session.seatId !== room.hostSeatId) return "";
   const full = room.seats.every((seat) => seat.nickname);
   return `<button id="start-button" ${full ? "" : "disabled"}>Start game</button>`;
+}
+
+function renderHostTools(): string {
+  if (!session || !room || session.seatId !== room.hostSeatId) return "";
+  return `
+    <section class="panel tools-panel">
+      <h2>Room Tools</h2>
+      <div class="tool-row">
+        <button id="copy-link-button" class="secondary" type="button">Copy link</button>
+        <button id="diagnostics-button" class="secondary" type="button">Diagnostics</button>
+      </div>
+      ${room.status === "ended" ? `<button id="reset-button" type="button">New game</button>` : ""}
+    </section>
+  `;
 }
 
 function renderPrivatePanel(): string {
@@ -312,6 +329,15 @@ function bindRoomActions(): void {
     connectionStatus = "offline";
     statusMessage = "";
     render();
+  });
+  document.querySelector<HTMLButtonElement>("#copy-link-button")?.addEventListener("click", () => {
+    void copyRoomLink();
+  });
+  document.querySelector<HTMLButtonElement>("#diagnostics-button")?.addEventListener("click", () => {
+    void loadDiagnostics();
+  });
+  document.querySelector<HTMLButtonElement>("#reset-button")?.addEventListener("click", () => {
+    void resetRoom();
   });
   document.querySelector<HTMLFormElement>("#night-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -448,6 +474,56 @@ async function createSocketTicket(value: Session): Promise<string> {
     throw new Error(payload.error ?? "Could not create socket ticket");
   }
   return payload.ticket;
+}
+
+async function resetRoom(): Promise<void> {
+  const currentSession = session;
+  if (!currentSession) return;
+  await runUiAction(async () => {
+    const response = await fetch(`/api/rooms/${currentSession.roomId}/reset`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ seatId: currentSession.seatId, token: currentSession.token })
+    });
+    const payload = (await response.json()) as RoomView & { error?: string };
+    if (!response.ok) throw new Error(payload.error ?? "Reset failed");
+    room = payload;
+    privateView = undefined;
+    statusMessage = "Room reset.";
+    render();
+  });
+}
+
+async function loadDiagnostics(): Promise<void> {
+  const currentSession = session;
+  if (!currentSession) return;
+  await runUiAction(async () => {
+    const response = await fetch(
+      `/api/rooms/${currentSession.roomId}/diagnostics?seatId=${currentSession.seatId}&token=${currentSession.token}`
+    );
+    const payload = (await response.json()) as {
+      status?: string;
+      phase?: string;
+      occupiedSeats?: number;
+      connectedSeats?: number;
+      activeSockets?: number;
+      pendingSocketTickets?: number;
+      error?: string;
+    };
+    if (!response.ok) throw new Error(payload.error ?? "Diagnostics failed");
+    statusMessage = `Diagnostics: ${payload.status ?? "unknown"}${payload.phase ? `/${payload.phase}` : ""}, ${payload.occupiedSeats ?? 0} seats, ${payload.activeSockets ?? 0} sockets, ${payload.pendingSocketTickets ?? 0} tickets.`;
+    render();
+  });
+}
+
+async function copyRoomLink(): Promise<void> {
+  if (!session) return;
+  const link = `${location.origin}/room/${session.roomId}`;
+  if (navigator.clipboard) {
+    await navigator.clipboard.writeText(link);
+  }
+  statusMessage = "Room link copied.";
+  render();
 }
 
 function send(message: Record<string, unknown>): void {

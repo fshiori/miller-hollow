@@ -36,12 +36,24 @@ try {
     token: "invalid-token"
   });
   await expectHttpError(`/api/rooms/${room.roomId}/private?seatId=${joined[0].seatId}&token=invalid-token`, 403);
+  await expectHttpError(`/api/rooms/${room.roomId}/diagnostics?seatId=${joined[0].seatId}&token=invalid-token`, 403);
+  await expectHttpError(`/api/rooms/${room.roomId}/reset`, 403, {
+    seatId: joined[1].seatId,
+    token: joined[1].token
+  });
 
   const reconnected = await post(`/api/rooms/${room.roomId}/reconnect`, {
     seatId: joined[0].seatId,
     token: joined[0].token
   });
   assert(reconnected.seatId === joined[0].seatId, "reconnect did not return the same seat");
+  const diagnostics = await get(`/api/rooms/${room.roomId}/diagnostics?seatId=${joined[0].seatId}&token=${joined[0].token}`);
+  assert(diagnostics.occupiedSeats === 8, "diagnostics did not report occupied seats");
+  assert(!JSON.stringify(diagnostics).includes("token"), "diagnostics leaked token data");
+  await post(`/api/rooms/${room.roomId}/reset`, {
+    seatId: joined[0].seatId,
+    token: joined[0].token
+  });
 
   await post(`/api/rooms/${room.roomId}/start`, {
     seatId: joined[0].seatId,
