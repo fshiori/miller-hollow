@@ -27,6 +27,7 @@ const teamLabels: Record<string, string> = {
 
 const phaseLabels: Record<string, string> = {
   lobby: "大廳",
+  thief_choice: "盜賊選擇",
   night_werewolves: "狼人夜晚",
   night_seer: "預言家夜晚",
   night_witch: "女巫夜晚",
@@ -61,6 +62,7 @@ const blockedReasonLabels: Record<string, string> = {
 const phaseStatusLabels: Record<string, string> = {
   "Werewolves submitted": "狼人已提交目標",
   "Waiting for werewolves": "等待狼人行動",
+  "Waiting for thief": "等待盜賊選擇",
   "Waiting for seer": "等待預言家行動",
   "Waiting for witch": "等待女巫行動",
   "Discussion open": "討論開放中",
@@ -79,6 +81,8 @@ const actionStateLabels: Record<string, string> = {
   "Hunter shot": "獵人反擊",
   "Choose Sheriff successor": "選擇下一任警長",
   "Sheriff successor": "警長繼任者",
+  "Choose Thief role": "選擇盜賊角色",
+  "Thief choice": "盜賊選擇",
   Vote: "投票",
   "Werewolf target": "狼人目標"
 };
@@ -243,6 +247,8 @@ export function localizeError(message: string | undefined): string {
 
 export function localizeEvent(message: string): string {
   if (message === "The game has started.") return "遊戲開始。";
+  if (message === "The Thief chooses a role.") return "盜賊開始選擇角色。";
+  if (message === "The Thief chose a role.") return "盜賊已選擇角色。";
   if (message === "The Seer wakes.") return "預言家醒來。";
   if (message === "The Werewolves wake.") return "狼人醒來。";
   if (message === "The Witch wakes.") return "女巫醒來。";

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.2 - Thief Opening Choice
+
+### Added
+
+- `thief` role support for custom roleflow rooms.
+- `thief_choice` opening phase before the normal first night.
+- Custom setup validation for exactly two Thief spare role cards.
+- Private Thief role-choice view and player action.
+- Host observer visibility for Thief identity, spare cards, and chosen role.
+- Engine test coverage for Thief choice.
+- V5.2 design and implementation documents.
+
+### Changed
+
+- App version reports `0.5.2`.
+
 ## 0.5.1 - Pre-Room Custom Role Setup
 
 ### Added

@@ -61,6 +61,18 @@ try {
   assert(customState.settings.presetId === "custom_roleflow", "custom roleflow preset was not selected");
   assert(customState.seats.length === 12, "custom roleflow did not create expected seats");
   assert(customState.preset?.roleSummary?.some((entry) => entry.role === "witch" && entry.count === 1), "custom roleflow summary missing Witch");
+  const thiefRoom = await post("/api/rooms", {
+    customRoleSetup: {
+      playerCount: 8,
+      roles: { werewolf: 2, seer: 1, thief: 1, hunter: 1, villager: 3 },
+      spareRoles: ["witch", "villager"],
+      sheriffEnabled: true,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true
+    }
+  });
+  const thiefState = await get(`/api/rooms/${thiefRoom.roomId}/state`);
+  assert(thiefState.preset?.roleSummary?.some((entry) => entry.role === "thief" && entry.count === 1), "custom roleflow summary missing Thief");
   await smokeAllPresetStarts();
   console.log("Preset smoke passed");
   await smokeOfficialRoleflow();

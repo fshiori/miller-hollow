@@ -33,6 +33,7 @@ export interface RolePreset {
   nightOrder: "legacy" | "official";
   werewolfTimeoutNoKill: boolean;
   sheriffEnabled: boolean;
+  spareRoles: readonly Role[];
   aliasOf?: AppBasicPresetId;
 }
 
@@ -42,6 +43,7 @@ export interface CustomRoleSetup {
   sheriffEnabled: boolean;
   nightOrder: "official" | "legacy";
   werewolfTimeoutNoKill: boolean;
+  spareRoles?: Role[];
 }
 
 export interface PublicPresetSummary {
@@ -198,7 +200,8 @@ export function createCustomRoleflowPreset(setup: CustomRoleSetup): RolePreset {
     counts: setup.roles,
     nightOrder: setup.nightOrder,
     werewolfTimeoutNoKill: setup.werewolfTimeoutNoKill,
-    sheriffEnabled: setup.sheriffEnabled
+    sheriffEnabled: setup.sheriffEnabled,
+    spareRoles: setup.spareRoles ?? []
   });
 }
 
@@ -211,6 +214,7 @@ export function validateCustomRoleSetup(setup: CustomRoleSetup): void {
   const seers = roles.seer ?? 0;
   const witches = roles.witch ?? 0;
   const hunters = roles.hunter ?? 0;
+  const thieves = roles.thief ?? 0;
   const villagers = roles.villager ?? 0;
   for (const [role, count] of Object.entries(roles) as Array<[Role, number | undefined]>) {
     if (!Number.isInteger(count) || (count ?? 0) < 0) {
@@ -229,10 +233,25 @@ export function validateCustomRoleSetup(setup: CustomRoleSetup): void {
   if (witches > 1 || hunters > 1 || seers > 1) {
     throw new Error("Seer, Witch, and Hunter are limited to 0 or 1");
   }
+  if (thieves > 1) {
+    throw new Error("Thief is limited to 0 or 1");
+  }
+  const spareRoles = setup.spareRoles ?? [];
+  if (thieves === 0 && spareRoles.length > 0) {
+    throw new Error("Spare roles require Thief");
+  }
+  if (thieves === 1 && spareRoles.length !== 2) {
+    throw new Error("Thief requires exactly two spare roles");
+  }
+  for (const role of spareRoles) {
+    if (!roleDefinitions[role]?.implemented || role === "thief") {
+      throw new Error(`Unsupported Thief spare role ${role}`);
+    }
+  }
   if (werewolves < 1) {
     throw new Error("Custom role setup requires at least one Werewolf");
   }
-  const nonWerewolves = seers + witches + hunters + villagers;
+  const nonWerewolves = seers + witches + hunters + thieves + villagers;
   if (nonWerewolves < 1) {
     throw new Error("Custom role setup requires at least one non-Werewolf");
   }
@@ -255,6 +274,7 @@ function createPreset(input: {
   nightOrder: "legacy" | "official";
   werewolfTimeoutNoKill: boolean;
   sheriffEnabled: boolean;
+  spareRoles?: readonly Role[];
 }): RolePreset {
   const roles = expandRoles(input.counts);
   if (roles.length !== input.playerCount) {
@@ -275,7 +295,8 @@ function createPreset(input: {
     enabled: true,
     nightOrder: input.nightOrder,
     werewolfTimeoutNoKill: input.werewolfTimeoutNoKill,
-    sheriffEnabled: input.sheriffEnabled
+    sheriffEnabled: input.sheriffEnabled,
+    spareRoles: Object.freeze([...(input.spareRoles ?? [])])
   });
 }
 

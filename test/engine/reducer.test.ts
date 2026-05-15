@@ -151,6 +151,29 @@ describe("Miller Hollow V1 engine", () => {
     expect(counts).toEqual({ werewolf: 3, seer: 1, witch: 1, hunter: 1, villager: 6 });
   });
 
+  it("runs V5.2 Thief choice before the first night", () => {
+    const preset = createCustomRoleflowPreset({
+      playerCount: 8,
+      roles: { werewolf: 2, seer: 1, thief: 1, hunter: 1, villager: 3 },
+      spareRoles: ["witch", "villager"],
+      sheriffEnabled: true,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true
+    });
+    let game = createGame(players(8), zeroRandom, preset);
+    const thief = game.players.find((player) => game.roles[player.id] === "thief")?.id as PlayerId;
+
+    expect(game.phase).toBe("thief_choice");
+    expect(toPrivatePlayerView(game, thief).legalActions).toContain("submit_thief_choice");
+    expect(toPrivatePlayerView(game, thief).legalRoleChoices).toEqual(["witch", "villager"]);
+    expect(toPublicView(game).players.every((player) => player.role === undefined)).toBe(true);
+
+    game = applyCommand(game, { type: "submit_thief_choice", actorId: thief, role: "witch" }).state;
+    expect(game.roles[thief]).toBe("witch");
+    expect(game.thief?.chosenRole).toBe("witch");
+    expect(game.phase).toBe("night_seer");
+  });
+
   it("keeps hidden roles private for larger official presets before endgame", () => {
     const game = createGame(players(18), zeroRandom, "official_basic_18");
     const publicView = toPublicView(game);

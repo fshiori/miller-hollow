@@ -91,7 +91,7 @@ export const roleDefinitions: Record<Role, RoleDefinition> = {
     id: "thief",
     displayName: "Thief",
     team: "village",
-    implemented: false,
+    implemented: true,
     setupPhase: true
   },
   little_girl: {

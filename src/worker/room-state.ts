@@ -130,6 +130,9 @@ export function normalizeRoomState(room: RoomState): RoomState {
   room.chatMessages ??= [];
   if (room.game) {
     room.game.publicVoteResults ??= [];
+    if (room.game.thief) {
+      room.game.thief.spareRoles ??= [];
+    }
     room.game.sheriff ??= { electionVotes: {}, electionCount: 0 };
     room.game.sheriff.electionVotes ??= {};
     room.game.sheriff.electionCount ??= 0;

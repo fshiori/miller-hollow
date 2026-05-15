@@ -40,6 +40,7 @@ export interface PrivatePlayerView {
   seerResults: Record<PlayerId, Role>;
   legalActions: string[];
   legalTargets: PlayerId[];
+  legalRoleChoices?: Role[];
   pendingWerewolfTarget?: PlayerId;
   witchPotions: {
     saveAvailable: boolean;
@@ -95,6 +96,9 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
 
   const alive = state.alive[playerId] ?? false;
   const legalActions: string[] = [];
+  if (alive && role === "thief" && state.phase === "thief_choice" && state.thief?.playerId === playerId) {
+    legalActions.push("submit_thief_choice");
+  }
   if (alive && role === "werewolf" && state.phase === "night_werewolves") {
     legalActions.push("submit_werewolf_target");
   }
@@ -163,6 +167,9 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
         : [],
     seerResults: role === "seer" ? state.nightActions.seerViews : {},
     legalTargets,
+    ...(role === "thief" && state.phase === "thief_choice" && state.thief?.playerId === playerId
+      ? { legalRoleChoices: state.thief.spareRoles }
+      : {}),
     ...(role === "witch" && state.nightActions.werewolfTarget
       ? { pendingWerewolfTarget: state.nightActions.werewolfTarget }
       : {}),
@@ -183,6 +190,9 @@ function publicPhaseStatus(state: GameState): PublicGameView["phaseStatus"] {
       submittedCount: state.nightActions.werewolfTarget ? 1 : 0,
       requiredCount: 1
     };
+  }
+  if (state.phase === "thief_choice") {
+    return { label: "Waiting for thief", submittedCount: state.thief?.chosenRole ? 1 : 0, requiredCount: 1 };
   }
   if (state.phase === "night_seer") {
     const livingSeer = state.players.find((player) => state.alive[player.id] && state.roles[player.id] === "seer");
@@ -257,6 +267,14 @@ function privateActionState(
       required: false,
       submitted: false,
       cannotActReason: "Dead players cannot act."
+    };
+  }
+  if (state.phase === "thief_choice" && role === "thief" && state.thief?.playerId === playerId) {
+    return {
+      required: true,
+      submitted: Boolean(state.thief.chosenRole),
+      label: "Choose Thief role",
+      ...(state.thief.chosenRole ? {} : { waitingFor: "Thief choice" })
     };
   }
   if (state.phase === "night_werewolves" && role === "werewolf") {

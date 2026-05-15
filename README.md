@@ -51,7 +51,7 @@ The V5 roleflow preset is available separately while the beginner presets remain
 
 V5 roleflow uses the official-style night order: Fortune Teller first, then Werewolves, then Witch if a future roleflow preset includes Witch. Werewolf timeout or host fast-forward without a selected target produces no Werewolf victim for V5 roleflow rooms.
 
-Hosts can also create a custom roleflow room before the lobby opens. Custom roleflow supports the currently implemented role cards: Werewolf, Fortune Teller, Witch, Hunter, and Ordinary Townsfolk, with Sheriff as a public-office toggle. The custom setup is locked after room creation. Werewolf and Fortune Teller counts must match the rulebook recommendation for the selected player count; the browser warns before submit and the Worker rejects invalid setup.
+Hosts can also create a custom roleflow room before the lobby opens. Custom roleflow supports the currently implemented role cards: Werewolf, Fortune Teller, Witch, Hunter, Thief, and Ordinary Townsfolk, with Sheriff as a public-office toggle. The custom setup is locked after room creation. Werewolf and Fortune Teller counts must match the rulebook recommendation for the selected player count; the browser warns before submit and the Worker rejects invalid setup. If Thief is enabled, the setup must include exactly two hidden spare role cards and the game starts with the Thief choice before the first normal night.
 
 Rooms use anonymous nicknames and browser-held reconnect tokens. The server stores token hashes, owns the hidden game state, and sends each browser only public room state plus that seat's private role/action view.
 

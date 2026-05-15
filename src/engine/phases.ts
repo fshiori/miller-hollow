@@ -1,5 +1,6 @@
 export const gamePhases = [
   "night_werewolves",
+  "thief_choice",
   "night_seer",
   "night_witch",
   "day_discussion",

@@ -27,6 +27,7 @@ import { createToken, hashToken } from "./tokens";
 import type { Env } from "./env";
 
 const PRODUCTION_PHASE_SECONDS: Record<string, number> = {
+  thief_choice: 60,
   night_werewolves: 90,
   night_seer: 60,
   night_witch: 90,
@@ -38,6 +39,7 @@ const PRODUCTION_PHASE_SECONDS: Record<string, number> = {
 };
 
 const SMOKE_PHASE_SECONDS: Record<string, number> = {
+  thief_choice: 30,
   night_werewolves: 45,
   night_seer: 35,
   night_witch: 45,
@@ -71,6 +73,7 @@ interface ClientMessage {
   targetId?: string;
   save?: boolean;
   poisonTargetId?: string;
+  role?: string;
   message?: string;
   ready?: boolean;
 }
@@ -826,6 +829,10 @@ export class RoomObject implements DurableObject {
         };
       }
     }
+    if (message.type === "thief_choice") {
+      if (!message.role) throw new Error("Thief role choice is required");
+      return { type: "submit_thief_choice", actorId: seatId, role: message.role as import("../engine").Role };
+    }
     if (message.type === "vote") {
       return { type: "submit_vote", actorId: seatId, targetId: message.targetId ?? "abstain" };
     }
@@ -1362,6 +1369,7 @@ export class RoomObject implements DurableObject {
             }
           : undefined,
         seerResults: game?.nightActions.seerViews ?? {},
+        thief: game?.thief,
         sheriff: game
           ? {
               holderId: game.sheriff.holderId,

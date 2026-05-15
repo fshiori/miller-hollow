@@ -15,6 +15,7 @@ import {
 import { escapeHtml } from "./render";
 
 type Phase =
+  | "thief_choice"
   | "night_werewolves"
   | "night_seer"
   | "night_witch"
@@ -124,8 +125,10 @@ interface CustomRoleSetup {
     seer: number;
     witch: number;
     hunter: number;
+    thief: number;
     villager: number;
   };
+  spareRoles?: string[];
   sheriffEnabled: boolean;
   nightOrder: "official" | "legacy";
   werewolfTimeoutNoKill: boolean;
@@ -157,6 +160,11 @@ interface ObserverRoomView extends RoomView {
       witchPoisonTarget?: string;
     };
     seerResults: Record<string, string>;
+    thief?: {
+      playerId?: string;
+      spareRoles: string[];
+      chosenRole?: string;
+    };
     sheriff?: {
       holderId?: string;
       electionVotes: Record<string, string>;
@@ -183,6 +191,7 @@ interface PrivateView {
   seerResults: Record<string, string>;
   legalActions: string[];
   legalTargets: string[];
+  legalRoleChoices?: string[];
   pendingWerewolfTarget?: string;
   witchPotions: {
     saveAvailable: boolean;
@@ -292,7 +301,16 @@ function render(): void {
                   <label>預言家<input name="seerCount" type="number" min="0" max="1" value="1" /></label>
                   <label>女巫<input name="witchCount" type="number" min="0" max="1" value="0" /></label>
                   <label>獵人<input name="hunterCount" type="number" min="0" max="1" value="1" /></label>
+                  <label>盜賊<input name="thiefCount" type="number" min="0" max="1" value="0" /></label>
                   <label>村民<input name="villagerCount" type="number" readonly value="4" /></label>
+                </div>
+                <div id="thief-spare-panel" hidden>
+                  <label>盜賊備選 1
+                    <select name="thiefSpareRole1">${roleChoiceOptions()}</select>
+                  </label>
+                  <label>盜賊備選 2
+                    <select name="thiefSpareRole2">${roleChoiceOptions("hunter")}</select>
+                  </label>
                 </div>
                 <label class="check"><input name="sheriffEnabled" type="checkbox" checked /> 啟用警長</label>
                 <p id="custom-role-warning" class="muted"></p>
@@ -650,6 +668,9 @@ function renderObserverPhasePanel(observerRoom: ObserverRoomView | undefined): s
       </div>
     `;
   }
+  if (phase === "thief_choice") {
+    return `<div class="observer-grid"><section><h3>盜賊選擇</h3><p>盜賊：<strong>${observer.thief?.playerId ? escapeHtml(observerNameFor(observer.thief.playerId)) : "無"}</strong></p><p>備選角色：${observer.thief?.spareRoles.map(labelRole).map(escapeHtml).join("、") || "無"}</p><p>已選：${observer.thief?.chosenRole ? escapeHtml(labelRole(observer.thief.chosenRole)) : "尚未選擇"}</p></section></div>`;
+  }
   if (phase === "night_seer") {
     const seer = observer.players.find((player) => player.role === "seer" && player.alive);
     return `<div class="observer-grid"><section><h3>預言家夜晚</h3><p>預言家：<strong>${seer ? escapeHtml(seer.nickname) : "無存活預言家"}</strong></p><p>查驗狀態：${observer.nightActions?.seerSkipped ? "預言家未查驗" : "等待查驗"}</p><p>查驗紀錄：${Object.entries(observer.seerResults).map(([id, role]) => `${observerNameFor(id)} ${labelRole(role)}`).map(escapeHtml).join("、") || "尚無"}</p></section></div>`;
@@ -811,6 +832,18 @@ function renderActionPanel(): string {
   }
   if (privateView.legalActions.includes("submit_werewolf_target")) {
     return renderWerewolfPanel();
+  }
+  if (privateView.legalActions.includes("submit_thief_choice")) {
+    return `
+      <form id="thief-choice-form" class="action-form">
+        <label>選擇你的角色
+          <select name="role" required>
+            ${(privateView.legalRoleChoices ?? []).map((role) => `<option value="${escapeHtml(role)}">${escapeHtml(labelRole(role))}</option>`).join("")}
+          </select>
+        </label>
+        <button type="submit">選擇</button>
+      </form>
+    `;
   }
   if (privateView.legalActions.includes("submit_seer_target")) {
     return targetForm("night-form", "查驗一名玩家", privateView.legalTargets, "查驗");
@@ -1059,7 +1092,7 @@ function bindCustomRoleSetup(form: HTMLFormElement | null): void {
   const toggle = form.querySelector<HTMLInputElement>("#custom-role-toggle");
   const panel = form.querySelector<HTMLDivElement>("#custom-role-panel");
   const playerCount = form.elements.namedItem("customPlayerCount") as HTMLSelectElement | null;
-  const inputs = ["werewolfCount", "seerCount", "witchCount", "hunterCount"].map((name) => form.elements.namedItem(name) as HTMLInputElement | null);
+  const inputs = ["werewolfCount", "seerCount", "witchCount", "hunterCount", "thiefCount"].map((name) => form.elements.namedItem(name) as HTMLInputElement | null);
   const refresh = () => {
     if (panel && toggle) panel.hidden = !toggle.checked;
     if (!toggle?.checked) return;
@@ -1071,6 +1104,8 @@ function bindCustomRoleSetup(form: HTMLFormElement | null): void {
       if (seerInput) seerInput.value = "1";
     }
     updateDerivedVillagers(form);
+    const sparePanel = form.querySelector<HTMLDivElement>("#thief-spare-panel");
+    if (sparePanel) sparePanel.hidden = Number((form.elements.namedItem("thiefCount") as HTMLInputElement | null)?.value ?? 0) === 0;
     const setup = readCustomRoleSetup(form);
     const warning = customRoleSetupWarning(setup);
     const warningElement = form.querySelector<HTMLParagraphElement>("#custom-role-warning");
@@ -1090,11 +1125,20 @@ function readCustomRoleSetup(form: HTMLFormElement): CustomRoleSetup {
     seer: value("seerCount"),
     witch: value("witchCount"),
     hunter: value("hunterCount"),
+    thief: value("thiefCount"),
     villager: Math.max(0, value("villagerCount"))
   };
+  const spareRoles =
+    roles.thief === 1
+      ? [
+          String((form.elements.namedItem("thiefSpareRole1") as HTMLSelectElement | null)?.value ?? "villager"),
+          String((form.elements.namedItem("thiefSpareRole2") as HTMLSelectElement | null)?.value ?? "hunter")
+        ]
+      : undefined;
   return {
     playerCount,
     roles,
+    ...(spareRoles ? { spareRoles } : {}),
     sheriffEnabled: (form.elements.namedItem("sheriffEnabled") as HTMLInputElement | null)?.checked ?? true,
     nightOrder: "official",
     werewolfTimeoutNoKill: true
@@ -1105,8 +1149,15 @@ function updateDerivedVillagers(form: HTMLFormElement): void {
   const value = (name: string) => Number((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value ?? 0);
   const villagerInput = form.elements.namedItem("villagerCount") as HTMLInputElement | null;
   if (!villagerInput) return;
-  const villagers = value("customPlayerCount") - value("werewolfCount") - value("seerCount") - value("witchCount") - value("hunterCount");
+  const villagers =
+    value("customPlayerCount") - value("werewolfCount") - value("seerCount") - value("witchCount") - value("hunterCount") - value("thiefCount");
   villagerInput.value = String(Math.max(0, villagers));
+}
+
+function roleChoiceOptions(selected = "villager"): string {
+  return ["villager", "werewolf", "seer", "witch", "hunter"]
+    .map((role) => `<option value="${role}" ${role === selected ? "selected" : ""}>${escapeHtml(labelRole(role))}</option>`)
+    .join("");
 }
 
 function customRoleSetupWarning(setup: CustomRoleSetup): string {
@@ -1183,6 +1234,11 @@ function bindRoomActions(): void {
     event.preventDefault();
     const targetId = String(new FormData(event.currentTarget as HTMLFormElement).get("targetId") ?? "");
     send({ type: "night_action", targetId });
+  });
+  document.querySelector<HTMLFormElement>("#thief-choice-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const role = String(new FormData(event.currentTarget as HTMLFormElement).get("role") ?? "");
+    send({ type: "thief_choice", role });
   });
   document.querySelector<HTMLFormElement>("#werewolf-chat-form")?.addEventListener("submit", (event) => {
     event.preventDefault();

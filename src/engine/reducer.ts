@@ -36,10 +36,11 @@ export function createGame(players: GamePlayer[], random: RandomSource, presetIn
     privateEvents[player.id] = [];
   });
 
+  const thiefPlayerId = players.find((player) => assignedRoles[player.id] === "thief")?.id;
   const startEvent = event("game_started", "The game has started.");
 
   return {
-    phase: preset.nightOrder === "official" ? "night_seer" : "night_werewolves",
+    phase: thiefPlayerId ? "thief_choice" : preset.nightOrder === "official" ? "night_seer" : "night_werewolves",
     round: 1,
     players,
     roles: assignedRoles,
@@ -47,6 +48,7 @@ export function createGame(players: GamePlayer[], random: RandomSource, presetIn
     nightActions: { seerViews: {} },
     votes: {},
     publicVoteResults: [],
+    ...(thiefPlayerId ? { thief: { playerId: thiefPlayerId, spareRoles: [...preset.spareRoles] } } : {}),
     sheriff: { electionVotes: {}, electionCount: 0 },
     pendingReactions: [],
     rules: {
@@ -67,6 +69,8 @@ export function applyCommand(state: GameState, command: GameCommand): ReducerRes
   }
 
   switch (command.type) {
+    case "submit_thief_choice":
+      return submitThiefChoice(state, command.actorId, command.role);
     case "submit_werewolf_target":
       return submitWerewolfTarget(state, command.actorId, command.targetId, command.source ?? "direct");
     case "skip_werewolf_target":
@@ -95,6 +99,14 @@ export function applyCommand(state: GameState, command: GameCommand): ReducerRes
 }
 
 export function buildTimeoutCommand(state: GameState, random: RandomSource): GameCommand {
+  if (state.phase === "thief_choice") {
+    const thief = state.thief;
+    if (!thief?.playerId || thief.spareRoles.length === 0) {
+      throw new Error("No pending Thief choice");
+    }
+    return { type: "submit_thief_choice", actorId: thief.playerId, role: thief.spareRoles[random.nextInt(thief.spareRoles.length)] as Role };
+  }
+
   if (state.phase === "night_werewolves") {
     const werewolf = livingPlayersWithRole(state, "werewolf")[0];
     const targets = legalWerewolfTargets(state);
@@ -153,6 +165,31 @@ export function buildTimeoutCommand(state: GameState, random: RandomSource): Gam
   }
 
   throw new Error(`No timeout command for phase ${state.phase}`);
+}
+
+function submitThiefChoice(state: GameState, actorId: PlayerId, role: Role): ReducerResult {
+  assertPhase(state, "thief_choice");
+  const thief = state.thief;
+  if (!thief?.playerId || thief.playerId !== actorId) {
+    throw new Error("No pending Thief choice for this player");
+  }
+  if (state.roles[actorId] !== "thief") {
+    throw new Error(`Player ${actorId} is not thief`);
+  }
+  if (!thief.spareRoles.includes(role)) {
+    throw new Error("Invalid Thief role choice");
+  }
+  const next = cloneState(state);
+  next.roles[actorId] = role;
+  next.thief = {
+    ...thief,
+    chosenRole: role
+  };
+  next.phase = firstNightPhase(next);
+  const choiceEvent = event("phase_changed", "The Thief chose a role.");
+  const phaseEvent = event("phase_changed", phaseMessage(next.phase));
+  next.publicEvents.push(choiceEvent, phaseEvent);
+  return { state: next, events: [choiceEvent, phaseEvent] };
 }
 
 function submitWerewolfTarget(
@@ -570,6 +607,7 @@ function advanceReactionOrResume(state: GameState, resume: ResumeState, events: 
 
 function phaseMessage(phase: GameState["phase"]): string {
   if (phase === "day_discussion") return "Day discussion begins.";
+  if (phase === "thief_choice") return "The Thief chooses a role.";
   if (phase === "night_seer") return "Night falls. The Seer wakes.";
   if (phase === "night_werewolves") return "Night falls.";
   if (phase === "day_vote") return "Voting begins.";
@@ -648,6 +686,7 @@ function cloneState(state: GameState): GameState {
     },
     votes: { ...state.votes },
     publicVoteResults: [...(state.publicVoteResults ?? [])],
+    ...(state.thief ? { thief: { ...state.thief, spareRoles: [...state.thief.spareRoles] } } : {}),
     sheriff: {
       ...state.sheriff,
       electionVotes: { ...(state.sheriff?.electionVotes ?? {}) }

@@ -68,6 +68,12 @@ export interface GameRules {
   sheriffEnabled: boolean;
 }
 
+export interface ThiefState {
+  playerId?: PlayerId;
+  spareRoles: Role[];
+  chosenRole?: Role;
+}
+
 export interface GameState {
   phase: Phase;
   round: number;
@@ -77,6 +83,7 @@ export interface GameState {
   nightActions: NightActions;
   votes: Record<PlayerId, PlayerId | "abstain">;
   publicVoteResults: PublicVoteResult[];
+  thief?: ThiefState;
   sheriff: SheriffState;
   pendingReactions: PendingReaction[];
   resumeAfterReactions?: ResumeState;

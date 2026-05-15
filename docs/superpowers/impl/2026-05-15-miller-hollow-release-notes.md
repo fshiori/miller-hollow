@@ -530,24 +530,30 @@ Release:
 
 - Commit/tag only; deployment is deferred until the full V5.1-V5.3 sequence is complete.
 
+## 0.5.2 - V5.2 Thief Opening Choice
+
+Status:
+
+- Completed locally.
+
+Completed:
+
+- Added implemented `thief` role.
+- Added `thief_choice` opening phase.
+- Added custom setup validation for exactly two spare roles when Thief is enabled.
+- Added Thief command, reducer flow, timeout fallback, private view, UI action form, and host observer state.
+- Added engine test coverage for Thief choice before first night.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+
+Release:
+
+- Commit/tag only; deployment is deferred until the full V5.1-V5.3 sequence is complete.
+
 ## Planned Next Versions
-
-### V5.1 - Pre-Room Custom Role Setup
-
-Planned:
-
-- Add pre-room custom role setup for existing roles.
-- Enforce rulebook-guided Werewolf and Seer count validation before room creation.
-- Keep room settings locked after creation.
-
-### V5.2 - Thief Opening Choice
-
-Planned:
-
-- Add Thief as a pre-game role-choice workflow.
-- Add exactly two hidden spare role cards when Thief is enabled.
-- Resolve Thief choice before the first normal night phase.
-- Keep spare cards hidden from public and spectator views.
 
 ### V5.3 - Cupid And Lovers
 
