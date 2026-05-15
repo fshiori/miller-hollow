@@ -73,6 +73,17 @@ try {
   });
   const thiefState = await get(`/api/rooms/${thiefRoom.roomId}/state`);
   assert(thiefState.preset?.roleSummary?.some((entry) => entry.role === "thief" && entry.count === 1), "custom roleflow summary missing Thief");
+  const cupidRoom = await post("/api/rooms", {
+    customRoleSetup: {
+      playerCount: 8,
+      roles: { werewolf: 2, seer: 1, cupid: 1, villager: 4 },
+      sheriffEnabled: true,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true
+    }
+  });
+  const cupidState = await get(`/api/rooms/${cupidRoom.roomId}/state`);
+  assert(cupidState.preset?.roleSummary?.some((entry) => entry.role === "cupid" && entry.count === 1), "custom roleflow summary missing Cupid");
   await smokeAllPresetStarts();
   console.log("Preset smoke passed");
   await smokeOfficialRoleflow();

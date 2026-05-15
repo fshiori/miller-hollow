@@ -215,6 +215,7 @@ export function validateCustomRoleSetup(setup: CustomRoleSetup): void {
   const witches = roles.witch ?? 0;
   const hunters = roles.hunter ?? 0;
   const thieves = roles.thief ?? 0;
+  const cupids = roles.cupid ?? 0;
   const villagers = roles.villager ?? 0;
   for (const [role, count] of Object.entries(roles) as Array<[Role, number | undefined]>) {
     if (!Number.isInteger(count) || (count ?? 0) < 0) {
@@ -236,6 +237,9 @@ export function validateCustomRoleSetup(setup: CustomRoleSetup): void {
   if (thieves > 1) {
     throw new Error("Thief is limited to 0 or 1");
   }
+  if (cupids > 1) {
+    throw new Error("Cupid is limited to 0 or 1");
+  }
   const spareRoles = setup.spareRoles ?? [];
   if (thieves === 0 && spareRoles.length > 0) {
     throw new Error("Spare roles require Thief");
@@ -244,14 +248,14 @@ export function validateCustomRoleSetup(setup: CustomRoleSetup): void {
     throw new Error("Thief requires exactly two spare roles");
   }
   for (const role of spareRoles) {
-    if (!roleDefinitions[role]?.implemented || role === "thief") {
+    if (!roleDefinitions[role]?.implemented || role === "thief" || role === "cupid") {
       throw new Error(`Unsupported Thief spare role ${role}`);
     }
   }
   if (werewolves < 1) {
     throw new Error("Custom role setup requires at least one Werewolf");
   }
-  const nonWerewolves = seers + witches + hunters + thieves + villagers;
+  const nonWerewolves = seers + witches + hunters + thieves + cupids + villagers;
   if (nonWerewolves < 1) {
     throw new Error("Custom role setup requires at least one non-Werewolf");
   }

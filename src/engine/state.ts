@@ -74,6 +74,11 @@ export interface ThiefState {
   chosenRole?: Role;
 }
 
+export interface LoversState {
+  playerIds: [PlayerId, PlayerId];
+  chosenBy: PlayerId;
+}
+
 export interface GameState {
   phase: Phase;
   round: number;
@@ -84,6 +89,7 @@ export interface GameState {
   votes: Record<PlayerId, PlayerId | "abstain">;
   publicVoteResults: PublicVoteResult[];
   thief?: ThiefState;
+  lovers?: LoversState;
   sheriff: SheriffState;
   pendingReactions: PendingReaction[];
   resumeAfterReactions?: ResumeState;

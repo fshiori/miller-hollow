@@ -37,10 +37,11 @@ export function createGame(players: GamePlayer[], random: RandomSource, presetIn
   });
 
   const thiefPlayerId = players.find((player) => assignedRoles[player.id] === "thief")?.id;
+  const cupidPlayerId = players.find((player) => assignedRoles[player.id] === "cupid")?.id;
   const startEvent = event("game_started", "The game has started.");
 
   return {
-    phase: thiefPlayerId ? "thief_choice" : preset.nightOrder === "official" ? "night_seer" : "night_werewolves",
+    phase: thiefPlayerId ? "thief_choice" : cupidPlayerId ? "night_cupid" : preset.nightOrder === "official" ? "night_seer" : "night_werewolves",
     round: 1,
     players,
     roles: assignedRoles,
@@ -71,6 +72,8 @@ export function applyCommand(state: GameState, command: GameCommand): ReducerRes
   switch (command.type) {
     case "submit_thief_choice":
       return submitThiefChoice(state, command.actorId, command.role);
+    case "submit_cupid_lovers":
+      return submitCupidLovers(state, command.actorId, command.targetIds);
     case "submit_werewolf_target":
       return submitWerewolfTarget(state, command.actorId, command.targetId, command.source ?? "direct");
     case "skip_werewolf_target":
@@ -105,6 +108,15 @@ export function buildTimeoutCommand(state: GameState, random: RandomSource): Gam
       throw new Error("No pending Thief choice");
     }
     return { type: "submit_thief_choice", actorId: thief.playerId, role: thief.spareRoles[random.nextInt(thief.spareRoles.length)] as Role };
+  }
+
+  if (state.phase === "night_cupid") {
+    const cupid = livingPlayersWithRole(state, "cupid")[0];
+    const targets = state.players.slice(0, 2).map((player) => player.id) as [PlayerId, PlayerId];
+    if (!cupid || targets.length < 2) {
+      throw new Error("No pending Cupid choice");
+    }
+    return { type: "submit_cupid_lovers", actorId: cupid, targetIds: targets };
   }
 
   if (state.phase === "night_werewolves") {
@@ -185,11 +197,29 @@ function submitThiefChoice(state: GameState, actorId: PlayerId, role: Role): Red
     ...thief,
     chosenRole: role
   };
-  next.phase = firstNightPhase(next);
+  next.phase = openingNightPhase(next);
   const choiceEvent = event("phase_changed", "The Thief chose a role.");
   const phaseEvent = event("phase_changed", phaseMessage(next.phase));
   next.publicEvents.push(choiceEvent, phaseEvent);
   return { state: next, events: [choiceEvent, phaseEvent] };
+}
+
+function submitCupidLovers(state: GameState, actorId: PlayerId, targetIds: [PlayerId, PlayerId]): ReducerResult {
+  assertPhase(state, "night_cupid");
+  assertLivingRole(state, actorId, "cupid");
+  const [first, second] = targetIds;
+  if (first === second) {
+    throw new Error("Cupid must choose two different players");
+  }
+  assertKnownPlayer(state, first);
+  assertKnownPlayer(state, second);
+  const next = cloneState(state);
+  next.lovers = { playerIds: [first, second], chosenBy: actorId };
+  next.phase = firstNightPhase(next);
+  const loversEvent = event("phase_changed", "Cupid chose the Lovers.");
+  const phaseEvent = event("phase_changed", phaseMessage(next.phase));
+  next.publicEvents.push(loversEvent, phaseEvent);
+  return { state: next, events: [loversEvent, phaseEvent] };
 }
 
 function submitWerewolfTarget(
@@ -542,6 +572,13 @@ function submitSheriffSuccessor(state: GameState, actorId: PlayerId, targetId: P
 
 function checkWinner(state: GameState) {
   const living = state.players.filter((player) => state.alive[player.id]);
+  if (state.lovers && living.length === 2) {
+    const livingIds = living.map((player) => player.id);
+    const [first, second] = state.lovers.playerIds;
+    if (livingIds.includes(first) && livingIds.includes(second) && teamForRole(state.roles[first] as Role) !== teamForRole(state.roles[second] as Role)) {
+      return "lovers";
+    }
+  }
   const livingWerewolves = living.filter((player) => state.roles[player.id] === "werewolf");
   const livingVillage = living.filter((player) => state.roles[player.id] !== "werewolf");
 
@@ -555,6 +592,8 @@ function checkWinner(state: GameState) {
 }
 
 function finalizeDeaths(state: GameState, deaths: Set<PlayerId>, resume: ResumeState, events: GameEvent[]): ReducerResult {
+  const heartbreakEvents = expandLoverDeaths(state, deaths);
+  events = [...events, ...heartbreakEvents];
   const winner = checkWinner(state);
   if (winner) {
     state.winner = winner;
@@ -566,6 +605,23 @@ function finalizeDeaths(state: GameState, deaths: Set<PlayerId>, resume: ResumeS
 
   queueDeathReactions(state, deaths, resume);
   return advanceReactionOrResume(state, resume, events);
+}
+
+function expandLoverDeaths(state: GameState, deaths: Set<PlayerId>): GameEvent[] {
+  const lovers = state.lovers?.playerIds;
+  if (!lovers) return [];
+  const [first, second] = lovers;
+  const additions: PlayerId[] = [];
+  if (deaths.has(first) && !deaths.has(second) && state.alive[second]) additions.push(second);
+  if (deaths.has(second) && !deaths.has(first) && state.alive[first]) additions.push(first);
+  if (additions.length === 0) return [];
+  for (const playerId of additions) {
+    state.alive[playerId] = false;
+    deaths.add(playerId);
+  }
+  const heartbreakEvent = event("night_deaths", "A Lover died of heartbreak.");
+  state.publicEvents.push(heartbreakEvent);
+  return [heartbreakEvent];
 }
 
 function queueDeathReactions(state: GameState, deaths: Set<PlayerId>, resume: ResumeState): void {
@@ -608,6 +664,7 @@ function advanceReactionOrResume(state: GameState, resume: ResumeState, events: 
 function phaseMessage(phase: GameState["phase"]): string {
   if (phase === "day_discussion") return "Day discussion begins.";
   if (phase === "thief_choice") return "The Thief chooses a role.";
+  if (phase === "night_cupid") return "Cupid wakes.";
   if (phase === "night_seer") return "Night falls. The Seer wakes.";
   if (phase === "night_werewolves") return "Night falls.";
   if (phase === "day_vote") return "Voting begins.";
@@ -619,6 +676,10 @@ function phaseMessage(phase: GameState["phase"]): string {
 
 function firstNightPhase(state: GameState): GameState["phase"] {
   return state.rules.nightOrder === "official" ? "night_seer" : "night_werewolves";
+}
+
+function openingNightPhase(state: GameState): GameState["phase"] {
+  return livingPlayersWithRole(state, "cupid")[0] && !state.lovers ? "night_cupid" : firstNightPhase(state);
 }
 
 function legalWerewolfTargets(state: GameState): PlayerId[] {
@@ -687,6 +748,7 @@ function cloneState(state: GameState): GameState {
     votes: { ...state.votes },
     publicVoteResults: [...(state.publicVoteResults ?? [])],
     ...(state.thief ? { thief: { ...state.thief, spareRoles: [...state.thief.spareRoles] } } : {}),
+    ...(state.lovers ? { lovers: { ...state.lovers, playerIds: [...state.lovers.playerIds] as [PlayerId, PlayerId] } } : {}),
     sheriff: {
       ...state.sheriff,
       electionVotes: { ...(state.sheriff?.electionVotes ?? {}) }

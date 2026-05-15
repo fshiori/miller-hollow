@@ -46,6 +46,9 @@ May include:
 - Action state for the current player.
 - Pending Hunter shot action for the dead Hunter.
 - Pending Sheriff successor action for the dead Sheriff.
+- Thief spare role choices for the Thief during `thief_choice`.
+- Cupid target controls for Cupid during `night_cupid`.
+- Lover partner identity for each Lover after Cupid resolves.
 - Werewolf private chat, proposed target, and Werewolf ready seat ids only for living Werewolves during Werewolf night.
 - Day ready seat ids and counts for living players during day discussion.
 
@@ -77,6 +80,8 @@ May include:
 - Vote map, missing voters, and vote tally during day vote.
 - Sheriff holder, election votes, missing election voters, and succession state.
 - Pending Hunter revenge state.
+- Thief state, including spare roles and chosen role.
+- Lovers state after Cupid resolves.
 - Weighted vote tally during day vote.
 - Resolved vote results.
 - Seer results and night action summary.

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.3 - Cupid And Lovers
+
+### Added
+
+- `cupid` role support for custom roleflow rooms.
+- `night_cupid` opening phase after Thief choice and before the normal first night.
+- Cupid command, timeout fallback, private action state, and player UI for choosing two distinct Lovers.
+- Lover partner identity in each Lover's private view.
+- Heartbreak death chaining when one Lover dies.
+- `lovers` win condition for cross-team Lovers as the final two living players.
+- Host observer visibility for Cupid/Lovers state.
+- Traditional Chinese copy for Cupid, Lovers, heartbreak, and Lovers victory.
+- Engine tests for Cupid selection, Lover private info, heartbreak, and Lovers win.
+- API smoke coverage for custom Cupid room setup.
+- V5.3 design and implementation documents.
+
+### Changed
+
+- Custom roleflow setup now supports Cupid as a dealt role.
+- Thief spare role cards remain limited to Werewolf, Fortune Teller, Witch, Hunter, and Ordinary Townsfolk.
+- App version reports `0.5.3`.
+
 ## 0.5.2 - Thief Opening Choice
 
 ### Added

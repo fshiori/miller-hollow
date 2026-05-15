@@ -23,7 +23,7 @@ export const baseRoleCatalog = [
 
 export type Role = (typeof baseRoleCatalog)[number];
 
-export type Team = "village" | "werewolves";
+export type Team = "village" | "werewolves" | "lovers";
 
 export interface RoleDefinition {
   id: Role;
@@ -83,7 +83,7 @@ export const roleDefinitions: Record<Role, RoleDefinition> = {
     displayName: "Cupido",
     officialName: "Cupido",
     team: "village",
-    implemented: false,
+    implemented: true,
     setupPhase: true,
     modifiesWinCondition: true
   },

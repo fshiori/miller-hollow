@@ -12,7 +12,7 @@ This is an unofficial fan implementation and is not affiliated with the original
 - `npm run typecheck` runs TypeScript checks.
 - `npm test` runs engine unit tests.
 - `npm run build` builds the browser assets and typechecks the Worker.
-- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, V5 roleflow, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, host observer access, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, day readiness, WebSocket night actions, day chat, vote resolution, and public weighted vote reveal.
+- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, custom Thief/Cupid setup, V5 roleflow, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, host observer access, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, day readiness, WebSocket night actions, day chat, vote resolution, and public weighted vote reveal.
 - `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus spectator and host-observer views through create, join, watch, reconnect, V5 roleflow start, Seer action, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, voting, weighted vote reveal, Traditional Chinese UI assertions, and responsive screenshots including an 18-seat lobby.
 - `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev` and `MILLER_HOLLOW_PRESET_ID=official_basic_18` or `official_roleflow_8`.
 - `npm run deploy:versioned` deploys with `MILLER_HOLLOW_BUILD_SHA` set from the current git commit.
@@ -51,7 +51,7 @@ The V5 roleflow preset is available separately while the beginner presets remain
 
 V5 roleflow uses the official-style night order: Fortune Teller first, then Werewolves, then Witch if a future roleflow preset includes Witch. Werewolf timeout or host fast-forward without a selected target produces no Werewolf victim for V5 roleflow rooms.
 
-Hosts can also create a custom roleflow room before the lobby opens. Custom roleflow supports the currently implemented role cards: Werewolf, Fortune Teller, Witch, Hunter, Thief, and Ordinary Townsfolk, with Sheriff as a public-office toggle. The custom setup is locked after room creation. Werewolf and Fortune Teller counts must match the rulebook recommendation for the selected player count; the browser warns before submit and the Worker rejects invalid setup. If Thief is enabled, the setup must include exactly two hidden spare role cards and the game starts with the Thief choice before the first normal night.
+Hosts can also create a custom roleflow room before the lobby opens. Custom roleflow supports the currently implemented role cards: Werewolf, Fortune Teller, Witch, Hunter, Thief, Cupid, and Ordinary Townsfolk, with Sheriff as a public-office toggle. The custom setup is locked after room creation. Werewolf and Fortune Teller counts must match the rulebook recommendation for the selected player count; the browser warns before submit and the Worker rejects invalid setup. If Thief is enabled, the setup must include exactly two hidden spare role cards and the game starts with the Thief choice before the first normal night. If Cupid is enabled, Cupid acts next and selects two distinct Lovers before the normal first night; Lovers privately see each other, die together through heartbreak, and cross-team Lovers can win together as the final two living players.
 
 Rooms use anonymous nicknames and browser-held reconnect tokens. The server stores token hashes, owns the hidden game state, and sends each browser only public room state plus that seat's private role/action view.
 
@@ -119,6 +119,7 @@ For local Cloudflare credentials, copy `.env.example` to `.env.local` and keep `
 Production defaults are configured through `MILLER_HOLLOW_TIMER_PROFILE = "production"`:
 
 - Werewolves: 90 seconds
+- Cupid: 60 seconds
 - Seer: 60 seconds
 - Witch: 90 seconds
 - Day discussion: 300 seconds
@@ -127,6 +128,7 @@ Production defaults are configured through `MILLER_HOLLOW_TIMER_PROFILE = "produ
 Smoke scripts start Wrangler with `--var MILLER_HOLLOW_TIMER_PROFILE:smoke`:
 
 - Werewolves: 45 seconds
+- Cupid: 30 seconds
 - Seer: 35 seconds
 - Witch: 45 seconds
 - Day discussion: 20 seconds

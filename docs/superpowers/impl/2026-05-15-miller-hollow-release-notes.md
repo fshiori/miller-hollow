@@ -553,16 +553,40 @@ Release:
 
 - Commit/tag only; deployment is deferred until the full V5.1-V5.3 sequence is complete.
 
+## 0.5.3 - V5.3 Cupid And Lovers
+
+Status:
+
+- Completed locally.
+
+Completed:
+
+- Added implemented `cupid` role.
+- Added `night_cupid` opening phase after Thief choice and before the normal first night.
+- Added Cupid action command, timeout fallback, private view action state, and player UI for choosing two distinct Lovers.
+- Added Lover partner identity to each Lover's private view.
+- Added heartbreak death chaining before Hunter/Sheriff reaction queueing.
+- Added `lovers` win condition for cross-team Lovers as the final two living players.
+- Added host observer visibility for Lovers state.
+- Added Traditional Chinese copy for Cupid/Lovers phase, action, events, errors, and victory.
+- Added API smoke coverage for custom Cupid setup.
+- Added engine tests for Cupid selection, Lover private info, heartbreak death, and Lovers victory.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser` (first run hit a local initial `page.goto("/")` timeout; immediate retry passed)
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+
+Release:
+
+- Commit/tag only; deployment can be done from `v0.5.3` when ready.
+
 ## Planned Next Versions
-
-### V5.3 - Cupid And Lovers
-
-Planned:
-
-- Add Cupid first-night Lovers selection.
-- Add Lover private partner knowledge.
-- Add heartbreak death chain.
-- Add Lovers win-condition handling.
 
 ### Later
 

@@ -22,7 +22,8 @@ Basic Edition is the current V5 rules scope:
 - V5 roleflow preset `official_roleflow_8`: 2 Werewolves, 1 Fortune Teller, 1 Hunter, 4 Ordinary Townsfolk.
 - Legacy `basic_8` through `basic_12` ids remain accepted as app-basic aliases.
 - Sheriff / Captain is an elected public office in roleflow rooms, not a role card.
-- No Cupid, Thief, Little Girl, expansion roles, or custom roles.
+- Custom roleflow rooms may include Witch, Hunter, Thief, Cupid, and Sheriff while the official beginner presets remain stable.
+- Little Girl and other expansion roles are out of scope.
 
 ## Lobby
 
@@ -51,6 +52,7 @@ Basic Edition is the current V5 rules scope:
 - Official beginner presets have no Witch, so night deaths resolve after Fortune Teller action.
 - App-basic night deaths resolve after Witch action.
 - V5 roleflow nights use official-style order: Fortune Teller first, then Werewolves, then Witch if present.
+- Custom roleflow nights resolve opening roles before the normal first night: Thief chooses a spare role if present, then Cupid chooses two distinct Lovers if present.
 - V5 roleflow Werewolf timeout or host fast-forward without a selected target produces no Werewolf victim.
 
 ## Day
@@ -77,8 +79,20 @@ Basic Edition is the current V5 rules scope:
 - A host/timeout fallback may skip the shot only to keep abandoned online rooms from blocking forever; normal player flow should treat the shot as required.
 - Winner is checked after the Hunter shot before the game resumes.
 
+## Thief And Cupid
+
+- Thief is available in custom roleflow rooms.
+- If Thief is present, the setup must include exactly two hidden spare role cards.
+- Thief chooses one spare role before the first normal night.
+- Cupid is available in custom roleflow rooms.
+- Cupid chooses two distinct players during `night_cupid`; Cupid may choose themselves as one of the Lovers.
+- Lovers privately learn each other's identity after Cupid resolves.
+- If one Lover dies, the other Lover dies immediately from heartbreak.
+- Lover heartbreak deaths can trigger Hunter revenge and Sheriff succession.
+
 ## Win Conditions
 
 - Village wins when all Werewolves are dead.
 - Werewolves win when no non-Werewolves remain alive.
+- Cross-team Lovers win together if they are the final two living players.
 - Roles become public only after the game enters `ended`.

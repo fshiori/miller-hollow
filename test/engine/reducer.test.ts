@@ -174,6 +174,67 @@ describe("Miller Hollow V1 engine", () => {
     expect(game.phase).toBe("night_seer");
   });
 
+  it("runs V5.3 Cupid choice before the first night and reveals Lovers privately", () => {
+    const preset = createCustomRoleflowPreset({
+      playerCount: 8,
+      roles: { werewolf: 2, seer: 1, cupid: 1, villager: 4 },
+      sheriffEnabled: true,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true
+    });
+    let game = createGame(players(8), zeroRandom, preset);
+    const cupid = game.players.find((player) => game.roles[player.id] === "cupid")?.id as PlayerId;
+
+    expect(game.phase).toBe("night_cupid");
+    expect(toPrivatePlayerView(game, cupid).legalActions).toContain("submit_cupid_lovers");
+    expect(toPrivatePlayerView(game, cupid).legalTargets).toHaveLength(8);
+    expect(toPublicView(game).phaseStatus).toEqual({ label: "Waiting for cupid", submittedCount: 0, requiredCount: 1 });
+    expect(toPublicView(game).players.every((player) => player.role === undefined)).toBe(true);
+
+    game = applyCommand(game, { type: "submit_cupid_lovers", actorId: cupid, targetIds: ["p1", "p3"] }).state;
+
+    expect(game.lovers?.playerIds).toEqual(["p1", "p3"]);
+    expect(game.phase).toBe("night_seer");
+    expect(toPrivatePlayerView(game, "p1").loverPartnerId).toBe("p3");
+    expect(toPrivatePlayerView(game, "p3").loverPartnerId).toBe("p1");
+    expect(toPrivatePlayerView(game, "p2").loverPartnerId).toBeUndefined();
+  });
+
+  it("applies V5.3 Lover heartbreak when one Lover dies", () => {
+    let game = fixedRoleGame();
+    game.lovers = { playerIds: ["p1", "p5"], chosenBy: "p8" };
+
+    game = applyCommand(game, { type: "submit_werewolf_target", actorId: "p2", targetId: "p5" }).state;
+    game = applyCommand(game, { type: "submit_seer_target", actorId: "p3", targetId: "p2" }).state;
+    game = applyCommand(game, { type: "submit_witch_action", actorId: "p4" }).state;
+
+    expect(game.alive.p5).toBe(false);
+    expect(game.alive.p1).toBe(false);
+    expect(game.publicEvents.map((entry) => entry.message)).toContain("A Lover died of heartbreak.");
+  });
+
+  it("detects V5.3 Lovers victory for a cross-team final pair", () => {
+    let game = fixedRoleGame();
+    game.phase = "day_vote";
+    game.lovers = { playerIds: ["p1", "p5"], chosenBy: "p8" };
+    game.alive = {
+      p1: true,
+      p2: false,
+      p3: false,
+      p4: false,
+      p5: true,
+      p6: false,
+      p7: false,
+      p8: false
+    };
+
+    game = applyCommand(game, { type: "resolve_vote", missingVotesAsAbstain: true }).state;
+
+    expect(game.phase).toBe("ended");
+    expect(game.winner).toBe("lovers");
+    expect(toPublicView(game).endgameReveal?.winner).toBe("lovers");
+  });
+
   it("keeps hidden roles private for larger official presets before endgame", () => {
     const game = createGame(players(18), zeroRandom, "official_basic_18");
     const publicView = toPublicView(game);

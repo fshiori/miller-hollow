@@ -22,12 +22,14 @@ const roleLabels: Record<string, string> = {
 
 const teamLabels: Record<string, string> = {
   village: "村莊陣營",
-  werewolves: "狼人陣營"
+  werewolves: "狼人陣營",
+  lovers: "戀人陣營"
 };
 
 const phaseLabels: Record<string, string> = {
   lobby: "大廳",
   thief_choice: "盜賊選擇",
+  night_cupid: "丘比特夜晚",
   night_werewolves: "狼人夜晚",
   night_seer: "預言家夜晚",
   night_witch: "女巫夜晚",
@@ -63,6 +65,7 @@ const phaseStatusLabels: Record<string, string> = {
   "Werewolves submitted": "狼人已提交目標",
   "Waiting for werewolves": "等待狼人行動",
   "Waiting for thief": "等待盜賊選擇",
+  "Waiting for cupid": "等待丘比特行動",
   "Waiting for seer": "等待預言家行動",
   "Waiting for witch": "等待女巫行動",
   "Discussion open": "討論開放中",
@@ -83,6 +86,8 @@ const actionStateLabels: Record<string, string> = {
   "Sheriff successor": "警長繼任者",
   "Choose Thief role": "選擇盜賊角色",
   "Thief choice": "盜賊選擇",
+  "Choose Lovers": "指定兩名戀人",
+  "Cupid lovers": "丘比特指定戀人",
   Vote: "投票",
   "Werewolf target": "狼人目標"
 };
@@ -150,6 +155,8 @@ const errorLabels: Record<string, string> = {
   "Target seat is empty": "目標座位是空的。",
   "Target is required": "請選擇目標。",
   "Unsupported message type": "不支援的訊息類型。",
+  "Cupid requires two targets": "丘比特需要指定兩名玩家。",
+  "Cupid must choose two different players": "丘比特必須選擇兩名不同玩家。",
   "Day chat is only available during discussion": "只有白天討論階段可以發言。",
   "Dead players cannot send day chat": "死亡玩家不能發言。",
   "Too many chat messages. Try again soon.": "發言過於頻繁，請稍後再試。",
@@ -213,7 +220,7 @@ export function labelBlockedReason(reason: string | undefined): string {
 
 export function labelPhaseStatus(label: string | undefined): string {
   if (!label) return "";
-  const winnerMatch = label.match(/^(village|werewolves) win$/);
+  const winnerMatch = label.match(/^(village|werewolves|lovers) win$/);
   if (winnerMatch?.[1]) return `${labelTeam(winnerMatch[1])}獲勝`;
   return phaseStatusLabels[label] ?? label;
 }
@@ -249,6 +256,9 @@ export function localizeEvent(message: string): string {
   if (message === "The game has started.") return "遊戲開始。";
   if (message === "The Thief chooses a role.") return "盜賊開始選擇角色。";
   if (message === "The Thief chose a role.") return "盜賊已選擇角色。";
+  if (message === "Cupid wakes.") return "丘比特醒來。";
+  if (message === "Cupid chose the Lovers.") return "丘比特已指定戀人。";
+  if (message === "A Lover died of heartbreak.") return "一名戀人因殉情死亡。";
   if (message === "The Seer wakes.") return "預言家醒來。";
   if (message === "The Werewolves wake.") return "狼人醒來。";
   if (message === "The Witch wakes.") return "女巫醒來。";
@@ -279,7 +289,7 @@ export function localizeEvent(message: string): string {
   const executeMatch = message.match(/^(.+) was executed\.$/);
   if (executeMatch?.[1]) return `${executeMatch[1]} 被處決。`;
 
-  const winnerMatch = message.match(/^(village|werewolves) win\.$/);
+  const winnerMatch = message.match(/^(village|werewolves|lovers) win\.$/);
   if (winnerMatch?.[1]) return `${labelTeam(winnerMatch[1])}獲勝。`;
 
   const sawMatch = message.match(/^You saw (.+)\.$/);

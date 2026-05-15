@@ -18,6 +18,10 @@ Date: 2026-05-15
 | Current Sheriff holder | Yes | Yes | Yes | Yes | Yes |
 | Pending Hunter revenge actor | Publicly implied by phase | Hunter only can act | Publicly implied by phase | Yes | Yes if roles revealed |
 | Pending Sheriff successor actor | Publicly implied by phase | Sheriff only can act | Publicly implied by phase | Yes | Yes if roles revealed |
+| Thief spare role choice | No | Thief only during `thief_choice` | No | Yes | Yes if roles revealed |
+| Cupid identity and target controls | No | Cupid only during `night_cupid` | No | Yes | Yes |
+| Lover pair | No | Each Lover sees partner only | No | Yes | Yes |
+| Lover heartbreak cause | Public event only, no roles | Yes via public event and own alive state | Public event only, no roles | Yes | Yes |
 | Resolved vote result after vote resolution | Yes, including weights | Yes, including weights | Yes, including weights | Yes | Yes |
 | Votes submitted count | Aggregate only | Aggregate plus own vote submitted state | Aggregate only | Yes | Yes via resolved result |
 | Reconnect token | No | Browser-held only | No | No | No |

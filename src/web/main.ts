@@ -16,6 +16,7 @@ import { escapeHtml } from "./render";
 
 type Phase =
   | "thief_choice"
+  | "night_cupid"
   | "night_werewolves"
   | "night_seer"
   | "night_witch"
@@ -126,6 +127,7 @@ interface CustomRoleSetup {
     witch: number;
     hunter: number;
     thief: number;
+    cupid: number;
     villager: number;
   };
   spareRoles?: string[];
@@ -165,6 +167,10 @@ interface ObserverRoomView extends RoomView {
       spareRoles: string[];
       chosenRole?: string;
     };
+    lovers?: {
+      playerIds: [string, string];
+      chosenBy: string;
+    };
     sheriff?: {
       holderId?: string;
       electionVotes: Record<string, string>;
@@ -192,6 +198,7 @@ interface PrivateView {
   legalActions: string[];
   legalTargets: string[];
   legalRoleChoices?: string[];
+  loverPartnerId?: string;
   pendingWerewolfTarget?: string;
   witchPotions: {
     saveAvailable: boolean;
@@ -302,6 +309,7 @@ function render(): void {
                   <label>女巫<input name="witchCount" type="number" min="0" max="1" value="0" /></label>
                   <label>獵人<input name="hunterCount" type="number" min="0" max="1" value="1" /></label>
                   <label>盜賊<input name="thiefCount" type="number" min="0" max="1" value="0" /></label>
+                  <label>丘比特<input name="cupidCount" type="number" min="0" max="1" value="0" /></label>
                   <label>村民<input name="villagerCount" type="number" readonly value="4" /></label>
                 </div>
                 <div id="thief-spare-panel" hidden>
@@ -671,6 +679,11 @@ function renderObserverPhasePanel(observerRoom: ObserverRoomView | undefined): s
   if (phase === "thief_choice") {
     return `<div class="observer-grid"><section><h3>盜賊選擇</h3><p>盜賊：<strong>${observer.thief?.playerId ? escapeHtml(observerNameFor(observer.thief.playerId)) : "無"}</strong></p><p>備選角色：${observer.thief?.spareRoles.map(labelRole).map(escapeHtml).join("、") || "無"}</p><p>已選：${observer.thief?.chosenRole ? escapeHtml(labelRole(observer.thief.chosenRole)) : "尚未選擇"}</p></section></div>`;
   }
+  if (phase === "night_cupid") {
+    const cupid = observer.players.find((player) => player.role === "cupid" && player.alive);
+    const lovers = observer.lovers?.playerIds ?? [];
+    return `<div class="observer-grid"><section><h3>丘比特夜晚</h3><p>丘比特：<strong>${cupid ? escapeHtml(cupid.nickname) : "無存活丘比特"}</strong></p><p>戀人：${lovers.map(observerNameFor).map(escapeHtml).join("、") || "尚未指定"}</p></section></div>`;
+  }
   if (phase === "night_seer") {
     const seer = observer.players.find((player) => player.role === "seer" && player.alive);
     return `<div class="observer-grid"><section><h3>預言家夜晚</h3><p>預言家：<strong>${seer ? escapeHtml(seer.nickname) : "無存活預言家"}</strong></p><p>查驗狀態：${observer.nightActions?.seerSkipped ? "預言家未查驗" : "等待查驗"}</p><p>查驗紀錄：${Object.entries(observer.seerResults).map(([id, role]) => `${observerNameFor(id)} ${labelRole(role)}`).map(escapeHtml).join("、") || "尚無"}</p></section></div>`;
@@ -817,6 +830,7 @@ function renderPrivatePanel(): string {
         ? `<p>狼隊隊友：${privateView.werewolfTeammates.map(nameFor).map(escapeHtml).join("、")}</p>`
         : ""
     }
+    ${privateView.loverPartnerId ? `<p>你的戀人：<strong>${escapeHtml(nameFor(privateView.loverPartnerId))}</strong></p>` : ""}
     ${seerResults ? `<ul>${seerResults}</ul>` : ""}
     <p class="muted">${escapeHtml(actionStateLabel(privateView))}</p>
   `;
@@ -842,6 +856,20 @@ function renderActionPanel(): string {
           </select>
         </label>
         <button type="submit">選擇</button>
+      </form>
+    `;
+  }
+  if (privateView.legalActions.includes("submit_cupid_lovers")) {
+    const options = privateView.legalTargets.map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(nameFor(id))}</option>`).join("");
+    return `
+      <form id="cupid-lovers-form" class="action-form">
+        <label>戀人 1
+          <select name="targetId1" required>${options}</select>
+        </label>
+        <label>戀人 2
+          <select name="targetId2" required>${options}</select>
+        </label>
+        <button type="submit">指定戀人</button>
       </form>
     `;
   }
@@ -1092,7 +1120,9 @@ function bindCustomRoleSetup(form: HTMLFormElement | null): void {
   const toggle = form.querySelector<HTMLInputElement>("#custom-role-toggle");
   const panel = form.querySelector<HTMLDivElement>("#custom-role-panel");
   const playerCount = form.elements.namedItem("customPlayerCount") as HTMLSelectElement | null;
-  const inputs = ["werewolfCount", "seerCount", "witchCount", "hunterCount", "thiefCount"].map((name) => form.elements.namedItem(name) as HTMLInputElement | null);
+  const inputs = ["werewolfCount", "seerCount", "witchCount", "hunterCount", "thiefCount", "cupidCount"].map(
+    (name) => form.elements.namedItem(name) as HTMLInputElement | null
+  );
   const refresh = () => {
     if (panel && toggle) panel.hidden = !toggle.checked;
     if (!toggle?.checked) return;
@@ -1126,6 +1156,7 @@ function readCustomRoleSetup(form: HTMLFormElement): CustomRoleSetup {
     witch: value("witchCount"),
     hunter: value("hunterCount"),
     thief: value("thiefCount"),
+    cupid: value("cupidCount"),
     villager: Math.max(0, value("villagerCount"))
   };
   const spareRoles =
@@ -1150,7 +1181,13 @@ function updateDerivedVillagers(form: HTMLFormElement): void {
   const villagerInput = form.elements.namedItem("villagerCount") as HTMLInputElement | null;
   if (!villagerInput) return;
   const villagers =
-    value("customPlayerCount") - value("werewolfCount") - value("seerCount") - value("witchCount") - value("hunterCount") - value("thiefCount");
+    value("customPlayerCount") -
+    value("werewolfCount") -
+    value("seerCount") -
+    value("witchCount") -
+    value("hunterCount") -
+    value("thiefCount") -
+    value("cupidCount");
   villagerInput.value = String(Math.max(0, villagers));
 }
 
@@ -1239,6 +1276,18 @@ function bindRoomActions(): void {
     event.preventDefault();
     const role = String(new FormData(event.currentTarget as HTMLFormElement).get("role") ?? "");
     send({ type: "thief_choice", role });
+  });
+  document.querySelector<HTMLFormElement>("#cupid-lovers-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget as HTMLFormElement);
+    const targetId1 = String(data.get("targetId1") ?? "");
+    const targetId2 = String(data.get("targetId2") ?? "");
+    if (targetId1 === targetId2) {
+      statusMessage = localizeError("Cupid must choose two different players");
+      render();
+      return;
+    }
+    send({ type: "cupid_lovers", targetIds: [targetId1, targetId2] });
   });
   document.querySelector<HTMLFormElement>("#werewolf-chat-form")?.addEventListener("submit", (event) => {
     event.preventDefault();

@@ -41,6 +41,7 @@ export interface PrivatePlayerView {
   legalActions: string[];
   legalTargets: PlayerId[];
   legalRoleChoices?: Role[];
+  loverPartnerId?: PlayerId;
   pendingWerewolfTarget?: PlayerId;
   witchPotions: {
     saveAvailable: boolean;
@@ -99,6 +100,9 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
   if (alive && role === "thief" && state.phase === "thief_choice" && state.thief?.playerId === playerId) {
     legalActions.push("submit_thief_choice");
   }
+  if (alive && role === "cupid" && state.phase === "night_cupid" && !state.lovers) {
+    legalActions.push("submit_cupid_lovers");
+  }
   if (alive && role === "werewolf" && state.phase === "night_werewolves") {
     legalActions.push("submit_werewolf_target");
   }
@@ -125,8 +129,11 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
   const legalTargets = state.players
     .filter((player) => state.alive[player.id])
     .filter((player) => {
-      if (state.phase !== "sheriff_election" && player.id === playerId) {
+      if (state.phase !== "sheriff_election" && state.phase !== "night_cupid" && player.id === playerId) {
         return false;
+      }
+      if (state.phase === "night_cupid") {
+        return role === "cupid";
       }
       if (state.phase === "night_werewolves") {
         return role === "werewolf" && state.roles[player.id] !== "werewolf";
@@ -170,6 +177,9 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
     ...(role === "thief" && state.phase === "thief_choice" && state.thief?.playerId === playerId
       ? { legalRoleChoices: state.thief.spareRoles }
       : {}),
+    ...(state.lovers?.playerIds.includes(playerId)
+      ? { loverPartnerId: state.lovers.playerIds.find((candidate) => candidate !== playerId) as PlayerId }
+      : {}),
     ...(role === "witch" && state.nightActions.werewolfTarget
       ? { pendingWerewolfTarget: state.nightActions.werewolfTarget }
       : {}),
@@ -190,6 +200,9 @@ function publicPhaseStatus(state: GameState): PublicGameView["phaseStatus"] {
       submittedCount: state.nightActions.werewolfTarget ? 1 : 0,
       requiredCount: 1
     };
+  }
+  if (state.phase === "night_cupid") {
+    return { label: "Waiting for cupid", submittedCount: state.lovers ? 1 : 0, requiredCount: 1 };
   }
   if (state.phase === "thief_choice") {
     return { label: "Waiting for thief", submittedCount: state.thief?.chosenRole ? 1 : 0, requiredCount: 1 };
@@ -275,6 +288,14 @@ function privateActionState(
       submitted: Boolean(state.thief.chosenRole),
       label: "Choose Thief role",
       ...(state.thief.chosenRole ? {} : { waitingFor: "Thief choice" })
+    };
+  }
+  if (state.phase === "night_cupid" && role === "cupid") {
+    return {
+      required: true,
+      submitted: Boolean(state.lovers),
+      label: "Choose Lovers",
+      ...(state.lovers ? {} : { waitingFor: "Cupid lovers" })
     };
   }
   if (state.phase === "night_werewolves" && role === "werewolf") {
