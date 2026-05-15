@@ -9,9 +9,17 @@ import {
   toPrivatePlayerView,
   toPublicView,
   type GameCommand,
-  type GamePlayer
+  type GamePlayer,
+  type PrivatePlayerView
 } from "../engine";
-import { createInitialRoomState, normalizeRoomState, occupiedSeatCount, resizeSeatsForPreset, type RoomState } from "./room-state";
+import {
+  createInitialRoomState,
+  createPhaseInteraction,
+  normalizeRoomState,
+  occupiedSeatCount,
+  resizeSeatsForPreset,
+  type RoomState
+} from "./room-state";
 import { createToken, hashToken } from "./tokens";
 import type { Env } from "./env";
 
@@ -143,10 +151,7 @@ export class RoomObject implements DurableObject {
       return;
     }
 
-    const command: GameCommand =
-      room.game.phase === "day_discussion"
-        ? { type: "advance_to_vote" }
-        : buildTimeoutCommand(room.game, mathRandomSource);
+    const command = this.phaseAdvanceCommand(room);
     room.game = applyCommand(room.game, command).state;
     this.afterGameMutation(room);
     await this.saveRoom(room);
@@ -206,7 +211,7 @@ export class RoomObject implements DurableObject {
     await this.broadcastRoom(room);
     return json({
       room: this.publicRoomView(room),
-      privateView: room.game ? toPrivatePlayerView(room.game, seat.seatId) : undefined,
+      privateView: this.privatePlayerView(room, seat.seatId),
       seatId: seat.seatId
     });
   }
@@ -316,6 +321,7 @@ export class RoomObject implements DurableObject {
     delete room.game;
     delete room.currentDeadlineAt;
     room.chatMessages = [];
+    room.phaseInteraction = createPhaseInteraction();
     room.socketTickets = {};
     room.spectatorTickets = {};
     for (const seat of room.seats) {
@@ -338,7 +344,7 @@ export class RoomObject implements DurableObject {
       return json({ error: "Invalid token" }, 403);
     }
     return json({
-      privateView: room.game ? toPrivatePlayerView(room.game, seat.seatId) : undefined
+      privateView: this.privatePlayerView(room, seat.seatId)
     });
   }
 
@@ -534,6 +540,22 @@ export class RoomObject implements DurableObject {
       await this.addChat(room, seatId, String(message.message ?? ""));
       return;
     }
+    if (message.type === "werewolf_chat") {
+      await this.addWerewolfChat(room, seatId, String(message.message ?? ""));
+      return;
+    }
+    if (message.type === "propose_werewolf_target") {
+      await this.proposeWerewolfTarget(room, seatId, String(message.targetId ?? ""));
+      return;
+    }
+    if (message.type === "set_werewolf_ready") {
+      await this.setWerewolfReady(room, seatId, Boolean(message.ready));
+      return;
+    }
+    if (message.type === "set_day_ready") {
+      await this.setDayReady(room, seatId, Boolean(message.ready));
+      return;
+    }
     if (!room.game) {
       this.send(socket, { type: "error", error: "Game has not started" });
       return;
@@ -587,12 +609,7 @@ export class RoomObject implements DurableObject {
     if (!room.game || room.status !== "playing" || room.game.phase === "ended") {
       throw new Error("Only playing games can advance phases");
     }
-    const command: GameCommand =
-      room.game.phase === "day_discussion"
-        ? { type: "advance_to_vote" }
-        : room.game.phase === "day_vote"
-          ? { type: "resolve_vote", missingVotesAsAbstain: true }
-          : buildTimeoutCommand(room.game, mathRandomSource);
+    const command = this.phaseAdvanceCommand(room);
     room.game = applyCommand(room.game, command).state;
   }
 
@@ -648,6 +665,7 @@ export class RoomObject implements DurableObject {
     delete room.game;
     delete room.currentDeadlineAt;
     room.chatMessages = [];
+    room.phaseInteraction = createPhaseInteraction();
     room.socketTickets = {};
     room.spectatorTickets = {};
     for (const seat of room.seats) {
@@ -718,6 +736,87 @@ export class RoomObject implements DurableObject {
     await this.broadcastRoom(room);
   }
 
+  private async addWerewolfChat(room: RoomState, seatId: string, message: string): Promise<void> {
+    this.assertLivingWerewolfTurn(room, seatId);
+    const text = message.trim();
+    if (!text) {
+      return;
+    }
+    if (!this.takeRateLimit(`wolf-chat:${seatId}`, 12, 60_000)) {
+      throw new Error("Too many Werewolf chat messages. Try again soon.");
+    }
+    const seat = room.seats.find((candidate) => candidate.seatId === seatId);
+    room.phaseInteraction.werewolfChat.push({
+      id: `${Date.now()}-${room.phaseInteraction.werewolfChat.length}`,
+      seatId,
+      nickname: seat?.nickname ?? seatId,
+      message: text.slice(0, 240),
+      createdAt: Date.now()
+    });
+    room.phaseInteraction.werewolfChat = room.phaseInteraction.werewolfChat.slice(-40);
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+  }
+
+  private async proposeWerewolfTarget(room: RoomState, seatId: string, targetId: string): Promise<void> {
+    this.assertLivingWerewolfTurn(room, seatId);
+    if (!targetId) {
+      throw new Error("Target is required");
+    }
+    if (!this.isLegalWerewolfTarget(room, targetId)) {
+      throw new Error("Invalid werewolf target");
+    }
+    room.phaseInteraction.werewolfTargetId = targetId;
+    room.phaseInteraction.werewolfReadySeatIds = [];
+    room.updatedAt = Date.now();
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+  }
+
+  private async setWerewolfReady(room: RoomState, seatId: string, ready: boolean): Promise<void> {
+    this.assertLivingWerewolfTurn(room, seatId);
+    const readySet = new Set(room.phaseInteraction.werewolfReadySeatIds);
+    if (ready) {
+      readySet.add(seatId);
+    } else {
+      readySet.delete(seatId);
+    }
+    room.phaseInteraction.werewolfReadySeatIds = [...readySet];
+    const advanced = this.tryAdvanceWerewolves(room);
+    if (advanced) {
+      this.afterGameMutation(room);
+    } else {
+      room.updatedAt = Date.now();
+    }
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+  }
+
+  private async setDayReady(room: RoomState, seatId: string, ready: boolean): Promise<void> {
+    if (!room.game || room.game.phase !== "day_discussion") {
+      throw new Error("Day readiness is only available during discussion");
+    }
+    if (!room.game.alive[seatId]) {
+      throw new Error("Dead players cannot ready during discussion");
+    }
+    const readySet = new Set(room.phaseInteraction.dayReadySeatIds);
+    if (ready) {
+      readySet.add(seatId);
+    } else {
+      readySet.delete(seatId);
+    }
+    room.phaseInteraction.dayReadySeatIds = [...readySet];
+    const advanced = this.tryAdvanceDayDiscussion(room);
+    if (advanced) {
+      this.afterGameMutation(room);
+    } else {
+      room.updatedAt = Date.now();
+    }
+    await this.saveRoom(room);
+    await this.broadcastRoom(room);
+  }
+
   private async closeSocket(socket: WebSocket): Promise<void> {
     const seatId = this.sessions.get(socket);
     this.sessions.delete(socket);
@@ -739,6 +838,7 @@ export class RoomObject implements DurableObject {
   }
 
   private afterGameMutation(room: RoomState): void {
+    this.syncPhaseInteraction(room);
     if (!room.game || room.game.phase === "ended") {
       room.status = room.game?.phase === "ended" ? "ended" : room.status;
       delete room.currentDeadlineAt;
@@ -801,6 +901,97 @@ export class RoomObject implements DurableObject {
     const allVoted = livingPlayerIds.every((playerId) => room.game?.votes[playerId]);
     if (allVoted) {
       room.game = applyCommand(room.game, { type: "resolve_vote", missingVotesAsAbstain: true }).state;
+    }
+  }
+
+  private phaseAdvanceCommand(room: RoomState): GameCommand {
+    if (!room.game) {
+      throw new Error("Game has not started");
+    }
+    if (room.game.phase === "day_discussion") {
+      return { type: "advance_to_vote" };
+    }
+    if (room.game.phase === "day_vote") {
+      return { type: "resolve_vote", missingVotesAsAbstain: true };
+    }
+    if (room.game.phase === "night_werewolves") {
+      const actorId = this.livingWerewolves(room)[0];
+      const targetId = room.phaseInteraction.werewolfTargetId;
+      if (actorId && targetId && this.isLegalWerewolfTarget(room, targetId)) {
+        return { type: "submit_werewolf_target", actorId, targetId };
+      }
+    }
+    return buildTimeoutCommand(room.game, mathRandomSource);
+  }
+
+  private tryAdvanceWerewolves(room: RoomState): boolean {
+    if (!room.game || room.game.phase !== "night_werewolves") {
+      return false;
+    }
+    const livingWerewolves = this.livingWerewolves(room);
+    const targetId = room.phaseInteraction.werewolfTargetId;
+    if (!livingWerewolves.length || !targetId || !this.isLegalWerewolfTarget(room, targetId)) {
+      return false;
+    }
+    const ready = new Set(room.phaseInteraction.werewolfReadySeatIds);
+    if (!livingWerewolves.every((playerId) => ready.has(playerId))) {
+      return false;
+    }
+    room.game = applyCommand(room.game, { type: "submit_werewolf_target", actorId: livingWerewolves[0] as string, targetId }).state;
+    this.logRoomEvent(room, "werewolf_target_confirmed", { targetId, readyCount: livingWerewolves.length });
+    return true;
+  }
+
+  private tryAdvanceDayDiscussion(room: RoomState): boolean {
+    if (!room.game || room.game.phase !== "day_discussion") {
+      return false;
+    }
+    const living = this.livingPlayers(room);
+    const ready = new Set(room.phaseInteraction.dayReadySeatIds);
+    if (!living.length || !living.every((playerId) => ready.has(playerId))) {
+      return false;
+    }
+    room.game = applyCommand(room.game, { type: "advance_to_vote" }).state;
+    this.logRoomEvent(room, "day_discussion_ready", { readyCount: living.length });
+    return true;
+  }
+
+  private assertLivingWerewolfTurn(room: RoomState, seatId: string): void {
+    if (!room.game || room.game.phase !== "night_werewolves") {
+      throw new Error("Werewolf chat is only available during Werewolf night");
+    }
+    if (!room.game.alive[seatId] || room.game.roles[seatId] !== "werewolf") {
+      throw new Error("Werewolf chat is only available to living Werewolves");
+    }
+  }
+
+  private isLegalWerewolfTarget(room: RoomState, targetId: string): boolean {
+    return Boolean(room.game?.alive[targetId] && room.game.roles[targetId] !== "werewolf");
+  }
+
+  private livingWerewolves(room: RoomState): string[] {
+    if (!room.game) return [];
+    return room.game.players.filter((player) => room.game?.alive[player.id] && room.game.roles[player.id] === "werewolf").map((player) => player.id);
+  }
+
+  private livingPlayers(room: RoomState): string[] {
+    if (!room.game) return [];
+    return room.game.players.filter((player) => room.game?.alive[player.id]).map((player) => player.id);
+  }
+
+  private syncPhaseInteraction(room: RoomState): void {
+    const phase = room.game?.phase === "ended" ? undefined : room.game?.phase;
+    if (room.phaseInteraction.phase !== phase) {
+      room.phaseInteraction = createPhaseInteraction(phase);
+    }
+    if (!room.game) return;
+    const livingSet = new Set(this.livingPlayers(room));
+    const livingWerewolfSet = new Set(this.livingWerewolves(room));
+    room.phaseInteraction.dayReadySeatIds = room.phaseInteraction.dayReadySeatIds.filter((seatId) => livingSet.has(seatId));
+    room.phaseInteraction.werewolfReadySeatIds = room.phaseInteraction.werewolfReadySeatIds.filter((seatId) => livingWerewolfSet.has(seatId));
+    if (room.phaseInteraction.werewolfTargetId && !this.isLegalWerewolfTarget(room, room.phaseInteraction.werewolfTargetId)) {
+      delete room.phaseInteraction.werewolfTargetId;
+      room.phaseInteraction.werewolfReadySeatIds = [];
     }
   }
 
@@ -872,7 +1063,9 @@ export class RoomObject implements DurableObject {
   private async loadRoom(roomId: string): Promise<RoomState> {
     const stored = await this.state.storage.get<RoomState>("room");
     if (stored) {
-      return normalizeRoomState(stored);
+      const room = normalizeRoomState(stored);
+      this.syncPhaseInteraction(room);
+      return room;
     }
     const room = createInitialRoomState(roomId, Date.now());
     await this.saveRoom(room);
@@ -897,7 +1090,7 @@ export class RoomObject implements DurableObject {
     if (room.game) {
       this.send(socket, {
         type: "private_view",
-        privateView: toPrivatePlayerView(room.game, seatId)
+        privateView: this.privatePlayerView(room, seatId)
       });
     }
   }
@@ -947,6 +1140,7 @@ export class RoomObject implements DurableObject {
         readyAt: seat.readyAt
       })),
       game: room.game ? toPublicView(room.game) : undefined,
+      phaseInteraction: this.publicPhaseInteractionView(room),
       chatMessages: room.chatMessages,
       currentDeadlineAt: room.currentDeadlineAt,
       startEligibility: this.startEligibility(room),
@@ -970,6 +1164,59 @@ export class RoomObject implements DurableObject {
       return { canStart: false, occupiedSeats, readySeats, requiredSeats, blockedReason: "Waiting for ready players" };
     }
     return { canStart: true, occupiedSeats, readySeats, requiredSeats };
+  }
+
+  private privatePlayerView(room: RoomState, seatId: string): (PrivatePlayerView & { phaseInteraction?: unknown }) | undefined {
+    if (!room.game) {
+      return undefined;
+    }
+    const view = toPrivatePlayerView(room.game, seatId);
+    const living = this.livingPlayers(room);
+    const wolfCount = this.livingWerewolves(room).length;
+    return {
+      ...view,
+      phaseInteraction: {
+        ...(view.role === "werewolf" && view.alive && room.game.phase === "night_werewolves"
+          ? {
+              werewolfChat: room.phaseInteraction.werewolfChat,
+              werewolfTargetId: room.phaseInteraction.werewolfTargetId,
+              werewolfReadySeatIds: room.phaseInteraction.werewolfReadySeatIds,
+              werewolfReadyCount: room.phaseInteraction.werewolfReadySeatIds.length,
+              werewolfReadyRequired: wolfCount
+            }
+          : {}),
+        ...(view.alive && room.game.phase === "day_discussion"
+          ? {
+              dayReadySeatIds: room.phaseInteraction.dayReadySeatIds,
+              dayReadyCount: room.phaseInteraction.dayReadySeatIds.length,
+              dayReadyRequired: living.length
+            }
+          : {})
+      }
+    };
+  }
+
+  private publicPhaseInteractionView(room: RoomState) {
+    if (!room.game || room.game.phase === "ended") {
+      return undefined;
+    }
+    if (room.game.phase === "night_werewolves") {
+      return {
+        phase: room.game.phase,
+        werewolfReadyCount: room.phaseInteraction.werewolfReadySeatIds.length,
+        werewolfReadyRequired: this.livingWerewolves(room).length
+      };
+    }
+    if (room.game.phase === "day_discussion") {
+      const living = this.livingPlayers(room);
+      return {
+        phase: room.game.phase,
+        dayReadySeatIds: room.phaseInteraction.dayReadySeatIds,
+        dayReadyCount: room.phaseInteraction.dayReadySeatIds.length,
+        dayReadyRequired: living.length
+      };
+    }
+    return { phase: room.game.phase };
   }
 }
 

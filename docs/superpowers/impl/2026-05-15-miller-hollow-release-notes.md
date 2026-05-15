@@ -346,6 +346,44 @@ Deployment:
 - Deployed at: `2026-05-15T08:37:49Z`
 - Note: deploy is from the current working tree; code is not pushed or tagged.
 
+## 0.4.7 - V4.7 Werewolf Discussion And Phase Readiness
+
+Status:
+
+- Deployed.
+
+Completed:
+
+- Added private Werewolf night chat for living Werewolves.
+- Added shared Werewolf target proposal and per-Werewolf confirmation.
+- Werewolf night advances when all living Werewolves confirm a valid proposed target.
+- Added living-player day readiness for advancing from day discussion to day vote.
+- Host fast-forward and timer timeout use a valid proposed Werewolf target when one exists.
+- Preserved hidden-information boundaries for public, spectator, and non-Werewolf private views.
+- Updated API and browser smoke coverage for the V4.7 interaction flow.
+- No new roles.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_8 npm run smoke:remote:quick`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_18 npm run smoke:remote:full`
+
+Deployment:
+
+- URL: `https://miller-hollow.fshiori.workers.dev`
+- App version: `0.4.7`
+- Runtime build sha: `local`
+- Worker Version ID: `938f2ab2-dd9c-4611-aceb-94a78b7099d7`
+- Deployed at: `2026-05-15T09:18:25Z`
+- Note: deploy is from the current working tree; code is not pushed.
+
 ## Planned Next Versions
 
 ### V5 - Complete Official Role Flow

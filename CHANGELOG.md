@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.7 - Werewolf Discussion And Phase Readiness
+
+### Added
+
+- Private Werewolf night chat for living Werewolves only.
+- Shared Werewolf target proposal and per-Werewolf confirmation flow.
+- Day discussion readiness so all living players can advance directly to voting.
+- API and browser smoke coverage for Werewolf hidden-info boundaries and readiness advancement.
+- V4.7 design and implementation documents.
+
+### Changed
+
+- Host fast-forward and timer timeout now use a valid proposed Werewolf target when one exists.
+- App version reports `0.4.7`.
+
 ## 0.4.6 - Host Phase Fast-Forward
 
 ### Added

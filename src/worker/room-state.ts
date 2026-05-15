@@ -1,4 +1,5 @@
 import { DEFAULT_BASIC_PRESET_ID, getBasicPreset, isBasicPresetId, type BasicPresetId, type GameState } from "../engine";
+import type { Phase } from "../engine/phases";
 
 export type RoomStatus = "lobby" | "playing" | "ended";
 export type ConnectionStatus = "connected" | "disconnected";
@@ -28,6 +29,7 @@ export interface RoomState {
   hostSeatId?: string;
   game?: GameState;
   chatMessages: ChatMessage[];
+  phaseInteraction: PhaseInteractionState;
   socketTickets: Record<string, SocketTicket>;
   spectatorTickets: Record<string, SpectatorTicket>;
   currentDeadlineAt?: number;
@@ -52,6 +54,22 @@ export interface ChatMessage {
   createdAt: number;
 }
 
+export interface WerewolfChatMessage {
+  id: string;
+  seatId: string;
+  nickname: string;
+  message: string;
+  createdAt: number;
+}
+
+export interface PhaseInteractionState {
+  phase?: Phase;
+  werewolfChat: WerewolfChatMessage[];
+  werewolfTargetId?: string;
+  werewolfReadySeatIds: string[];
+  dayReadySeatIds: string[];
+}
+
 export function createInitialRoomState(roomId: string, now: number): RoomState {
   const preset = getBasicPreset(DEFAULT_BASIC_PRESET_ID);
   return {
@@ -65,6 +83,7 @@ export function createInitialRoomState(roomId: string, now: number): RoomState {
     },
     seats: createEmptySeats(preset.playerCount),
     chatMessages: [],
+    phaseInteraction: createPhaseInteraction(),
     socketTickets: {},
     spectatorTickets: {},
     createdAt: now,
@@ -91,6 +110,7 @@ export function normalizeRoomState(room: RoomState): RoomState {
     locked: settings.locked ?? false
   };
   room.chatMessages ??= [];
+  room.phaseInteraction = normalizePhaseInteraction(room.phaseInteraction, room.game?.phase);
   room.socketTickets ??= {};
   room.spectatorTickets ??= {};
   room.seats = normalizeSeats(room.seats ?? [], preset.playerCount);
@@ -100,6 +120,28 @@ export function normalizeRoomState(room: RoomState): RoomState {
     seat.ready ??= false;
   }
   return room;
+}
+
+export function createPhaseInteraction(phase?: Phase): PhaseInteractionState {
+  return {
+    ...(phase ? { phase } : {}),
+    werewolfChat: [],
+    werewolfReadySeatIds: [],
+    dayReadySeatIds: []
+  };
+}
+
+function normalizePhaseInteraction(value: PhaseInteractionState | undefined, phase: Phase | undefined): PhaseInteractionState {
+  if (!value || value.phase !== phase) {
+    return createPhaseInteraction(phase);
+  }
+  return {
+    ...(phase ? { phase } : {}),
+    werewolfChat: Array.isArray(value.werewolfChat) ? value.werewolfChat.slice(-40) : [],
+    ...(typeof value.werewolfTargetId === "string" ? { werewolfTargetId: value.werewolfTargetId } : {}),
+    werewolfReadySeatIds: Array.isArray(value.werewolfReadySeatIds) ? [...new Set(value.werewolfReadySeatIds)] : [],
+    dayReadySeatIds: Array.isArray(value.dayReadySeatIds) ? [...new Set(value.dayReadySeatIds)] : []
+  };
 }
 
 export function occupiedSeatCount(room: RoomState): number {

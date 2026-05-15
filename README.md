@@ -1,6 +1,6 @@
 # Miller Hollow
 
-Basic Edition V4.6 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
+Basic Edition V4.7 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
 
 The player-facing browser UI is Traditional Chinese. Public API fields, internal ids, and developer diagnostics remain English for compatibility.
 
@@ -12,8 +12,8 @@ This is an unofficial fan implementation and is not affiliated with the original
 - `npm run typecheck` runs TypeScript checks.
 - `npm test` runs engine unit tests.
 - `npm run build` builds the browser assets and typechecks the Worker.
-- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, WebSocket night actions, day chat, timer-driven vote start, and vote resolution.
-- `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus a spectator through create, join, watch, reconnect, start, night actions, day chat, timer-driven vote start, voting, Traditional Chinese UI assertions, and responsive screenshots including an 18-seat lobby.
+- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, Werewolf private chat/target readiness, day readiness, WebSocket night actions, day chat, and vote resolution.
+- `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus a spectator through create, join, watch, reconnect, start, Werewolf private chat/target readiness, day readiness, voting, Traditional Chinese UI assertions, and responsive screenshots including an 18-seat lobby.
 - `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev` and `MILLER_HOLLOW_PRESET_ID=official_basic_18`.
 - `npm run deploy:versioned` deploys with `MILLER_HOLLOW_BUILD_SHA` set from the current git commit.
 - `npm run deploy:dry-run` validates the Worker bundle and Cloudflare configuration without publishing.

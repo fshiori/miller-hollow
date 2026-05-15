@@ -451,6 +451,16 @@ code {
   gap: 8px;
 }
 
+.action-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.compact-heading h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
 .role-panel {
   background:
     linear-gradient(160deg, rgba(44, 111, 104, 0.18), transparent 48%),
@@ -513,6 +523,11 @@ code {
   border: 1px solid rgba(231, 204, 151, 0.14);
   border-radius: 8px;
   background: rgba(8, 12, 16, 0.28);
+}
+
+.private-chat {
+  min-height: 110px;
+  max-height: 180px;
 }
 
 .chat-log p,

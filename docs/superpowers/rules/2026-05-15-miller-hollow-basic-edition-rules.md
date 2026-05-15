@@ -4,7 +4,7 @@ Date: 2026-05-15
 
 ## Scope
 
-Basic Edition is the current V4 rules scope:
+Basic Edition is the current V4.7 rules scope:
 
 - Official beginner presets for 8-18 players.
 - `official_basic_8`: 2 Werewolves, 1 Fortune Teller, 5 Ordinary Townsfolk.
@@ -36,7 +36,11 @@ Basic Edition is the current V4 rules scope:
 
 ## Night
 
-- Werewolves choose one non-Werewolf target.
+- Living Werewolves may use private night chat that is visible only to living Werewolves.
+- Living Werewolves may propose one shared non-Werewolf target.
+- Changing the proposed target clears existing Werewolf confirmations.
+- When every living Werewolf confirms a valid proposed target, the game advances to Fortune Teller or Seer night.
+- If the Werewolf timer expires, the proposed target is used when valid; otherwise a legal target is selected by timeout.
 - Fortune Teller or Seer may inspect one living target and privately sees that role.
 - App-basic presets include a Witch.
 - Witch may save the Werewolf target once.
@@ -49,6 +53,8 @@ Basic Edition is the current V4 rules scope:
 
 - Living players may chat during day discussion.
 - Dead players and spectators cannot send day chat.
+- Living players may mark themselves ready to proceed during day discussion.
+- When every living player is ready during day discussion, the game advances to day vote.
 - Living players vote during day vote.
 - Missing votes become abstentions on timeout.
 - Tied votes execute no one.

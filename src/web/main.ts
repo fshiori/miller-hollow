@@ -74,6 +74,14 @@ interface RoomView {
       timeline: { id: string; message: string }[];
     };
   };
+  phaseInteraction?: {
+    phase?: Phase;
+    werewolfReadyCount?: number;
+    werewolfReadyRequired?: number;
+    dayReadySeatIds?: string[];
+    dayReadyCount?: number;
+    dayReadyRequired?: number;
+  };
   chatMessages: { id: string; seatId: string; nickname: string; message: string; createdAt: number }[];
   currentDeadlineAt?: number;
   startEligibility?: {
@@ -105,6 +113,16 @@ interface PrivateView {
     label?: string;
     waitingFor?: string;
     cannotActReason?: string;
+  };
+  phaseInteraction?: {
+    werewolfChat?: { id: string; seatId: string; nickname: string; message: string; createdAt: number }[];
+    werewolfTargetId?: string;
+    werewolfReadySeatIds?: string[];
+    werewolfReadyCount?: number;
+    werewolfReadyRequired?: number;
+    dayReadySeatIds?: string[];
+    dayReadyCount?: number;
+    dayReadyRequired?: number;
   };
 }
 
@@ -480,7 +498,7 @@ function renderActionPanel(): string {
     return `<p class="muted">你已死亡。你可以觀看公開資訊，但不能行動。</p>`;
   }
   if (privateView.legalActions.includes("submit_werewolf_target")) {
-    return targetForm("night-form", "選擇一名受害者", privateView.legalTargets, "送出");
+    return renderWerewolfPanel();
   }
   if (privateView.legalActions.includes("submit_seer_target")) {
     return targetForm("night-form", "查驗一名玩家", privateView.legalTargets, "查驗");
@@ -504,7 +522,63 @@ function renderActionPanel(): string {
   if (privateView.legalActions.includes("submit_vote")) {
     return targetForm("vote-form", "投票", ["abstain", ...privateView.legalTargets], "投票");
   }
+  if (room.game.phase === "day_discussion") {
+    return renderDayReadyPanel();
+  }
   return `<p class="muted">等待目前階段結束。</p>`;
+}
+
+function renderWerewolfPanel(): string {
+  const interaction = privateView?.phaseInteraction;
+  const chat = interaction?.werewolfChat ?? [];
+  const readyIds = interaction?.werewolfReadySeatIds ?? [];
+  const isReady = Boolean(session?.seatId && readyIds.includes(session.seatId));
+  const targetId = interaction?.werewolfTargetId;
+  return `
+    <div class="action-stack">
+      <div class="panel-heading compact-heading">
+        <h3>狼人討論</h3>
+        <span>${interaction?.werewolfReadyCount ?? 0}/${interaction?.werewolfReadyRequired ?? 0} 已確認</span>
+      </div>
+      <div class="chat-log private-chat" data-testid="werewolf-chat-log">
+        ${chat
+          .slice(-12)
+          .map((message) => `<p><strong>${escapeHtml(message.nickname)}</strong> ${escapeHtml(message.message)}</p>`)
+          .join("") || `<p class="muted">還沒有狼人訊息。</p>`}
+      </div>
+      <form id="werewolf-chat-form" class="inline-form">
+        <input name="message" maxlength="240" placeholder="只會傳給存活狼人" />
+        <button type="submit">送出</button>
+      </form>
+      <form id="werewolf-target-form" class="action-form">
+        <p>目前提議：<strong>${targetId ? escapeHtml(nameFor(targetId)) : "尚未提議"}</strong></p>
+        <label>擊殺目標
+          <select name="targetId" required>
+            ${privateView?.legalTargets.map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(nameFor(id))}</option>`).join("") ?? ""}
+          </select>
+        </label>
+        <button type="submit">提議目標</button>
+      </form>
+      <button id="werewolf-ready-button" class="${isReady ? "secondary" : ""}" type="button" ${targetId ? "" : "disabled"}>
+        ${isReady ? "取消確認" : "確認目標"}
+      </button>
+    </div>
+  `;
+}
+
+function renderDayReadyPanel(): string {
+  const interaction = privateView?.phaseInteraction ?? room?.phaseInteraction;
+  const readyIds = interaction?.dayReadySeatIds ?? [];
+  const isReady = Boolean(session?.seatId && readyIds.includes(session.seatId));
+  return `
+    <div class="action-stack">
+      <p class="muted">白天討論中。所有存活玩家都準備後會直接進入投票。</p>
+      <button id="day-ready-button" class="${isReady ? "secondary" : ""}" type="button">
+        ${isReady ? "取消進入投票" : "我已準備投票"}
+      </button>
+      <p class="muted">${interaction?.dayReadyCount ?? 0}/${interaction?.dayReadyRequired ?? 0} 名存活玩家已準備。</p>
+    </div>
+  `;
 }
 
 function renderEndgamePanel(): string {
@@ -631,6 +705,26 @@ function bindRoomActions(): void {
     event.preventDefault();
     const targetId = String(new FormData(event.currentTarget as HTMLFormElement).get("targetId") ?? "");
     send({ type: "night_action", targetId });
+  });
+  document.querySelector<HTMLFormElement>("#werewolf-chat-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const message = String(new FormData(form).get("message") ?? "");
+    send({ type: "werewolf_chat", message });
+    form.reset();
+  });
+  document.querySelector<HTMLFormElement>("#werewolf-target-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const targetId = String(new FormData(event.currentTarget as HTMLFormElement).get("targetId") ?? "");
+    send({ type: "propose_werewolf_target", targetId });
+  });
+  document.querySelector<HTMLButtonElement>("#werewolf-ready-button")?.addEventListener("click", () => {
+    const readyIds = privateView?.phaseInteraction?.werewolfReadySeatIds ?? [];
+    send({ type: "set_werewolf_ready", ready: !readyIds.includes(session?.seatId ?? "") });
+  });
+  document.querySelector<HTMLButtonElement>("#day-ready-button")?.addEventListener("click", () => {
+    const readyIds = privateView?.phaseInteraction?.dayReadySeatIds ?? room?.phaseInteraction?.dayReadySeatIds ?? [];
+    send({ type: "set_day_ready", ready: !readyIds.includes(session?.seatId ?? "") });
   });
   document.querySelector<HTMLFormElement>("#witch-form")?.addEventListener("submit", (event) => {
     event.preventDefault();

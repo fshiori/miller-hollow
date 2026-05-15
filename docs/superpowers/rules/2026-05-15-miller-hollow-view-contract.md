@@ -10,6 +10,7 @@ May include:
 - Selected public preset id, family, rules source, label, player count, and labeled role-count summary.
 - Seat nicknames, connection status, ready state, and last seen time.
 - Public game phase, round, alive/dead status, public events, phase status.
+- Phase interaction aggregates, such as Werewolf confirmation counts and day ready counts.
 - Public chat messages.
 - Start eligibility.
 - Endgame reveal only after `phase === "ended"`.
@@ -24,6 +25,9 @@ Must not include:
 - Roles before endgame.
 - Seer results before endgame.
 - Witch potion state before endgame.
+- Werewolf private chat messages.
+- Werewolf proposed target id before it is committed as the actual night target.
+- Werewolf ready seat ids.
 
 ## Private Player View
 
@@ -35,6 +39,8 @@ May include:
 - Seer results for the Seer.
 - Witch potion availability for the Witch.
 - Action state for the current player.
+- Werewolf private chat, proposed target, and Werewolf ready seat ids only for living Werewolves during Werewolf night.
+- Day ready seat ids and counts for living players during day discussion.
 
 Must not include another player's private-only view.
 

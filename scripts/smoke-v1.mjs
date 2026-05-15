@@ -143,7 +143,8 @@ try {
   assert(!startedState.game.endgameReveal, "public state revealed endgame before game ended");
   await expectSpectatorPublicOnly(room.roomId);
 
-  const wolfIndex = privates.findIndex((view) => view.role === "werewolf");
+  const wolfIndexes = privates.map((view, index) => (view.role === "werewolf" ? index : -1)).filter((index) => index >= 0);
+  const wolfIndex = wolfIndexes[0];
   const seerIndex = privates.findIndex((view) => view.role === "seer");
   const witchIndex = privates.findIndex((view) => view.role === "witch");
   assert(wolfIndex >= 0 && seerIndex >= 0 && witchIndex >= 0, "required roles were not assigned");
@@ -154,11 +155,30 @@ try {
     type: "day_chat",
     message: "night chat should fail"
   });
+  const villagerIndex = privates.findIndex((view) => view.role !== "werewolf");
+  await expectSocketError(room.roomId, joined[villagerIndex], {
+    type: "werewolf_chat",
+    message: "non wolf chat should fail"
+  });
 
-  await socketSend(room.roomId, joined[wolfIndex], {
-    type: "night_action",
-    targetId: privates[wolfIndex].legalTargets[0]
-  }, "night_seer");
+  const wolfMessage = "Smoke wolf private chat";
+  await socketSend(room.roomId, joined[wolfIndex], { type: "werewolf_chat", message: wolfMessage }, undefined);
+  await delay(250);
+  privates = await privateViews(room.roomId, joined);
+  assert(privates[wolfIndex].phaseInteraction?.werewolfChat?.some((message) => message.message === wolfMessage), "werewolf chat missing from wolf private view");
+  assert(!privates[villagerIndex].phaseInteraction?.werewolfChat, "werewolf chat leaked to non-werewolf private view");
+  let publicState = await get(`/api/rooms/${room.roomId}/state`);
+  assert(!JSON.stringify(publicState).includes(wolfMessage), "public state leaked werewolf chat");
+  await expectSpectatorPublicOnly(room.roomId, wolfMessage);
+
+  const wolfTarget = privates[wolfIndex].legalTargets[0];
+  await socketSend(room.roomId, joined[wolfIndex], { type: "propose_werewolf_target", targetId: wolfTarget }, undefined);
+  await delay(250);
+  privates = await privateViews(room.roomId, joined);
+  assert(privates[wolfIndex].phaseInteraction?.werewolfTargetId === wolfTarget, "werewolf proposed target missing from wolf private view");
+  assert(!JSON.stringify(await get(`/api/rooms/${room.roomId}/state`)).includes('"werewolfTargetId"'), "public state leaked werewolf proposed target");
+  await socketSend(room.roomId, joined[wolfIndexes[0]], { type: "set_werewolf_ready", ready: true }, "night_werewolves");
+  await socketSend(room.roomId, joined[wolfIndexes[1]], { type: "set_werewolf_ready", ready: true }, "night_seer");
   privates = await privateViews(room.roomId, joined);
   await socketSend(room.roomId, joined[seerIndex], {
     type: "night_action",
@@ -174,10 +194,9 @@ try {
     message: "Smoke test day chat"
   }, "day_discussion");
 
-  await post(`/api/rooms/${room.roomId}/host/advance-phase`, {
-    seatId: joined[0].seatId,
-    token: joined[0].token
-  });
+  for (const player of await livingSessions(room.roomId, joined)) {
+    await socketSend(room.roomId, player, { type: "set_day_ready", ready: true }, undefined);
+  }
   await waitForPhase(room.roomId, "day_vote", 5_000);
   const target = (await get(`/api/rooms/${room.roomId}/state`)).game.players.find((player) => player.alive).id;
   for (const player of await livingSessions(room.roomId, joined)) {
@@ -185,7 +204,7 @@ try {
   }
   await waitForNotPhase(room.roomId, "day_vote", 5_000);
   assert(!publicStateHasRoles(await get(`/api/rooms/${room.roomId}/state`)), "public state leaked roles after non-end vote");
-  console.log("V4.6 smoke passed");
+  console.log("V4.7 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");
@@ -336,7 +355,7 @@ async function expectSocketError(roomId, player, message) {
   });
 }
 
-async function expectSpectatorPublicOnly(roomId) {
+async function expectSpectatorPublicOnly(roomId, forbiddenText) {
   const ticketPayload = await post(`/api/rooms/${roomId}/spectator-ticket`);
   assert(ticketPayload.ticket, "spectator ticket was not returned");
   const socket = new WebSocket(`${wsBase}/api/rooms/${roomId}/spectator-socket?ticket=${ticketPayload.ticket}`);
@@ -351,7 +370,7 @@ async function expectSpectatorPublicOnly(roomId) {
       }
       if (payload.type === "room_view") {
         const body = JSON.stringify(payload);
-        if (body.includes("playerTokenHash") || body.includes("socketTickets") || body.includes('"privateView"')) {
+        if (body.includes("playerTokenHash") || body.includes("socketTickets") || body.includes('"privateView"') || (forbiddenText && body.includes(forbiddenText))) {
           clearTimeout(timeout);
           reject(new Error("spectator public view leaked hidden state"));
           return;

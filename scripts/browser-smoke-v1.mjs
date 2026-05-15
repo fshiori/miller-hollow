@@ -89,8 +89,22 @@ try {
   const roleAfterReload = (await pages[0].getByTestId("role").textContent())?.trim();
   assert(roleBeforeReload === roleAfterReload, "player reconnect did not restore the same private role");
 
-  const werewolfPage = await firstVisible(pages, "#night-form");
-  await submitSelectForm(werewolfPage, "#night-form");
+  const werewolfPages = await pagesWithRole(pages, "狼人");
+  assert(werewolfPages.length >= 2, "browser smoke could not find both Werewolves");
+  const nonWerewolfPage = pages.find((page) => !werewolfPages.includes(page));
+  assert(nonWerewolfPage, "browser smoke could not find a non-Werewolf page");
+  const wolfMessage = "Browser wolf private chat";
+  await waitConnected(werewolfPages[0]);
+  await werewolfPages[0].locator('#werewolf-chat-form input[name="message"]').fill(wolfMessage);
+  await werewolfPages[0].locator('#werewolf-chat-form button[type="submit"]').click();
+  await werewolfPages[1].locator("body").filter({ hasText: wolfMessage }).waitFor({ timeout: 10_000 });
+  assert((await nonWerewolfPage.locator("body").filter({ hasText: wolfMessage }).count()) === 0, "Werewolf chat leaked to non-Werewolf page");
+  assert((await spectatorPage.locator("body").filter({ hasText: wolfMessage }).count()) === 0, "Werewolf chat leaked to spectator page");
+  await submitSelectForm(werewolfPages[0], "#werewolf-target-form");
+  for (const page of werewolfPages) {
+    await page.locator("#werewolf-ready-button:not([disabled])").waitFor({ state: "visible" });
+    await page.locator("#werewolf-ready-button").click();
+  }
   await waitForAnyPagePhase(pages, "night_seer");
 
   const seerPage = await firstVisible(pages, "#night-form");
@@ -115,7 +129,7 @@ try {
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V4.6 smoke passed");
+  console.log("Browser V4.7 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {
@@ -156,6 +170,20 @@ async function pageWithRole(pages, role) {
     await delay(100);
   }
   throw new Error(`Could not find page with role ${role}`);
+}
+
+async function pagesWithRole(pages, role) {
+  const started = Date.now();
+  while (Date.now() - started < 10_000) {
+    const matches = [];
+    for (const page of pages) {
+      const text = (await page.getByTestId("role").textContent().catch(() => ""))?.trim();
+      if (text === role) matches.push(page);
+    }
+    if (matches.length > 0) return matches;
+    await delay(100);
+  }
+  throw new Error(`Could not find pages with role ${role}`);
 }
 
 async function firstVisible(pages, selector) {
