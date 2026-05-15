@@ -26,11 +26,14 @@ try {
   const spectatorPage = await spectatorContext.newPage();
 
   await pages[0].goto(base);
+  await pages[0].getByRole("button", { name: "建立房間" }).waitFor();
+  await pages[0].getByRole("button", { name: "加入房間" }).waitFor();
+  await pages[0].locator("body").filter({ hasText: "8-18 人" }).waitFor();
   await pages[0].locator('#create-form input[name="nickname"]').fill("Browser 18 Host");
   await pages[0].locator('#create-form select[name="presetId"]').selectOption("official_basic_18");
   await pages[0].locator('#create-form button[type="submit"]').click();
   await pages[0].getByTestId("room-id").waitFor();
-  await pages[0].locator(".room-meta").filter({ hasText: "18-player official beginner" }).waitFor();
+  await pages[0].locator(".room-meta").filter({ hasText: "18 人官方基本局" }).waitFor();
   await pages[0].locator(".seat").nth(17).waitFor();
   await pages[0].screenshot({ path: ".wrangler/browser-smoke-desktop-lobby-18.png", fullPage: true });
   await pages[0].locator("#leave-button").click();
@@ -44,13 +47,14 @@ try {
   const roomId = (await pages[0].getByTestId("room-id").textContent())?.trim();
   assert(roomId, "room id did not render after create");
   await pages[0].locator("#lock-button").click();
-  await pages[0].locator("#lock-button").filter({ hasText: "Unlock" }).waitFor();
+  await pages[0].locator("#lock-button").filter({ hasText: "解鎖" }).waitFor();
   await pages[0].locator("#lock-button").click();
-  await pages[0].locator("#lock-button").filter({ hasText: "Lock" }).waitFor();
+  await pages[0].locator("#lock-button").filter({ hasText: "鎖定" }).waitFor();
 
   await spectatorPage.goto(`${base}/room/${roomId}/watch`);
   await spectatorPage.getByTestId("room-id").waitFor();
-  await waitForAnyPagePhase([spectatorPage], "Lobby");
+  await spectatorPage.locator("body").filter({ hasText: "觀戰中" }).waitFor();
+  await waitForAnyPagePhase([spectatorPage], "lobby");
   await pages[0].screenshot({ path: ".wrangler/browser-smoke-desktop-lobby.png", fullPage: true });
   await spectatorPage.setViewportSize({ width: 390, height: 844 });
   await spectatorPage.screenshot({ path: ".wrangler/browser-smoke-mobile-watch.png", fullPage: true });
@@ -65,13 +69,16 @@ try {
 
   for (const page of pages) {
     await page.locator("#ready-button").waitFor({ state: "visible" });
+    await page.locator("#ready-button").filter({ hasText: "準備" }).waitFor();
     await page.locator("#ready-button").click();
   }
   await pages[0].locator("#start-button").waitFor({ state: "visible" });
+  await pages[0].locator("#start-button").filter({ hasText: "開始遊戲" }).waitFor();
   await pages[0].locator("#start-button:not([disabled])").waitFor();
   await pages[0].locator("#start-button").click();
   await waitForAnyPagePhase(pages, "night_werewolves");
   await waitForRoles(pages);
+  await assertLocalizedRoles(pages);
   await waitForAnyPagePhase([spectatorPage], "night_werewolves");
   assert((await spectatorPage.getByTestId("role").count()) === 0, "spectator rendered a private role");
 
@@ -106,7 +113,7 @@ try {
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V4 smoke passed");
+  console.log("Browser V4.5 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {
@@ -127,6 +134,14 @@ async function waitForReady() {
 
 async function waitForRoles(pages) {
   await Promise.all(pages.map((page) => page.getByTestId("role").waitFor({ timeout: 10_000 })));
+}
+
+async function assertLocalizedRoles(pages) {
+  const roles = await Promise.all(pages.map((page) => page.getByTestId("role").textContent()));
+  const text = roles.join(" ");
+  assert(text.includes("狼人"), "localized Werewolf role did not render");
+  assert(text.includes("預言家"), "localized Fortune Teller role did not render");
+  assert(text.includes("村民"), "localized Villager role did not render");
 }
 
 async function pageWithRole(pages, role) {
@@ -162,15 +177,16 @@ async function submitSelectForm(page, selector) {
 }
 
 async function waitConnected(page) {
-  await page.locator(".status-pill").filter({ hasText: "connected" }).waitFor({ timeout: 10_000 });
+  await page.locator(".status-pill").filter({ hasText: "已連線" }).waitFor({ timeout: 10_000 });
 }
 
 async function waitForAnyPagePhase(pages, phase, timeout = 10_000) {
+  const expected = labelPhase(phase);
   const started = Date.now();
   while (Date.now() - started < timeout) {
     for (const page of pages) {
       const text = (await page.getByTestId("phase").textContent().catch(() => ""))?.trim();
-      if (text === phase) return;
+      if (text === expected) return;
     }
     await delay(200);
   }
@@ -178,15 +194,28 @@ async function waitForAnyPagePhase(pages, phase, timeout = 10_000) {
 }
 
 async function waitForAnyPageNotPhase(pages, phase, timeout = 10_000) {
+  const expected = labelPhase(phase);
   const started = Date.now();
   while (Date.now() - started < timeout) {
     for (const page of pages) {
       const text = (await page.getByTestId("phase").textContent().catch(() => ""))?.trim();
-      if (text && text !== phase) return;
+      if (text && text !== expected) return;
     }
     await delay(200);
   }
   throw new Error(`Timed out waiting to leave phase ${phase}`);
+}
+
+function labelPhase(phase) {
+  return {
+    lobby: "大廳",
+    night_werewolves: "狼人夜晚",
+    night_seer: "預言家夜晚",
+    night_witch: "女巫夜晚",
+    day_discussion: "白天討論",
+    day_vote: "白天投票",
+    ended: "遊戲結束"
+  }[phase] ?? phase;
 }
 
 function assert(condition, message) {

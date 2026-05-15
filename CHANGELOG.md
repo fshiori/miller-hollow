@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.5 - Traditional Chinese UX Polish
+
+### Added
+
+- Traditional Chinese copy layer for player-facing role, team, phase, status, preset, event, and error labels.
+- Browser smoke assertions for core Traditional Chinese UI strings.
+- V4.5 design and implementation documents.
+
+### Changed
+
+- Main create, join, lobby, spectator, gameplay, host tools, reconnect, day chat, vote, and endgame UI now renders in Traditional Chinese.
+- Role summaries, private roles, Seer results, winner labels, and public timeline messages are localized in the browser UI.
+- App version reports `0.4.5`.
+- README and release notes now identify V4.5 as localization/UX polish, not a rules expansion.
+
 ## 0.4.0 - Official 8-18 Preset Foundation
 
 ### Added

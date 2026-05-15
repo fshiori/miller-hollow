@@ -261,9 +261,58 @@ Deployment:
 - Deployed at: `2026-05-15T07:22:30Z`
 - Note: deploy is from the current working tree; code is not pushed or tagged.
 
+## 0.4.5 - V4.5 Traditional Chinese UX Polish
+
+Status:
+
+- Deployed.
+- No rules changes.
+- No new roles.
+
+Completed:
+
+- Added a browser-side Traditional Chinese copy layer for roles, teams, phases, statuses, presets, events, and common errors.
+- Translated the primary player UI:
+  - Create and join flow
+  - Lobby seats and readiness
+  - Host tools
+  - Spectator view
+  - Private role panel
+  - Night actions
+  - Day chat
+  - Voting
+  - Endgame reveal
+  - Reconnect and connection status
+- Kept API fields, internal ids, and developer diagnostics English for compatibility.
+- Kept app-basic Witch presets as compatibility/API presets while translating their UI path.
+- Added browser smoke checks for core Traditional Chinese labels.
+- Added V4.5 design and implementation documents.
+- Updated README and changelog.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_8 npm run smoke:remote:quick`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_18 npm run smoke:remote:full`
+
+Deployment:
+
+- URL: `https://miller-hollow.fshiori.workers.dev`
+- App version: `0.4.5`
+- Runtime build sha: `local`
+- Worker Version ID: `a9b56ca6-6ebc-42c1-b0fe-309a15cc7969`
+- Deployed at: `2026-05-15T08:13:04Z`
+- Note: deploy is from the current working tree; code is not pushed or tagged.
+
 ## Planned Next Versions
 
-### V4.5 or V5 - Complete Official Role Flow
+### V5 - Complete Official Role Flow
 
 Planned:
 

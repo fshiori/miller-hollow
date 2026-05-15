@@ -85,21 +85,22 @@ V4 should ship:
 
 V4 may rename current V3.5 `basic_*` presets in the public API only through a compatibility plan. Existing rooms and clients must keep working.
 
-### V4.5: First Special Role
+### V4.5: Traditional Chinese UX
 
-V4.5 should add the first new official role after V4 proves the preset and view contracts.
+V4.5 should translate the player-facing interface to Traditional Chinese and polish UX copy before new mechanics are added.
 
-Recommended first role: Hunter.
+Scope:
 
-Reason:
-
-- Hunter validates death-triggered actions.
-- It does not require hidden lovers, alternate win conditions, setup-round choices, vote weighting, or online spying behavior.
+- Full Traditional Chinese player-facing UI.
+- Consistent role, phase, team, and action terminology.
+- Browser smoke checks for core localized strings.
+- No new roles.
 
 ### V5+
 
 Candidate future releases:
 
+- Hunter: death-triggered action.
 - Sheriff / Captain: visible role, double vote, succession.
 - Cupid / Lovers: setup round, lover private view, coupled death, possible third-team win condition.
 - Thief: setup round with extra card pool.
