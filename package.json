@@ -1,11 +1,12 @@
 {
   "name": "miller-hollow",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && astro build",
     "dev": "wrangler dev",
+    "dev:web": "astro dev --host 0.0.0.0",
     "smoke:browser": "node scripts/browser-smoke-v1.mjs",
     "smoke:remote": "node scripts/remote-smoke-v1.mjs",
     "smoke:remote:full": "node scripts/remote-smoke-v1.mjs",
@@ -25,6 +26,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260511.1",
     "@playwright/test": "^1.60.0",
+    "astro": "^6.3.3",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6",
     "wrangler": "^4.90.1"

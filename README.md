@@ -1,6 +1,6 @@
 # Miller Hollow
 
-Public-play V2 implementation for an 8-player online Werewolves of Miller's Hollow room on Cloudflare Workers and Durable Objects.
+Public-play V2 implementation for an 8-player online Werewolves of Miller's Hollow room on Astro, Cloudflare Workers, and Durable Objects.
 
 This is an unofficial fan implementation and is not affiliated with the original game publisher or rights holders.
 
@@ -38,6 +38,8 @@ Spectators can watch from `/room/:roomId/watch` without occupying a player seat.
 - Default timer profile: `MILLER_HOLLOW_TIMER_PROFILE = "production"`
 
 V1 uses Cloudflare Workers, Workers Static Assets, and one SQLite-backed Durable Object class for room/game storage. It does not require D1, KV, R2, Queues, or a separate database service.
+
+The frontend is an Astro static shell with a client-side TypeScript app. The Worker serves the generated static assets and owns all API, WebSocket, and Durable Object routes.
 
 Before deploy, run:
 

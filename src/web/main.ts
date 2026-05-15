@@ -102,24 +102,26 @@ function render(): void {
   if (!session) {
     app.innerHTML = `
       <main class="shell narrow auth-screen">
-        <header class="masthead">
-          <div class="eyebrow">Hidden-role table</div>
-          <h1>Miller Hollow</h1>
-          <p>8 players, hidden roles, one moderated room.</p>
-        </header>
-        <section class="panel auth-grid">
-          <form id="create-form">
-            <h2>Create</h2>
-            <label>Nickname<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
-            <button type="submit">Create room</button>
-          </form>
-          <form id="join-form">
-            <h2>Join</h2>
-            <label>Room id<input name="roomId" required value="${escapeHtml(roomIdFromPath)}" /></label>
-            <label>Nickname<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
-            <button type="submit">Join room</button>
-            ${roomIdFromPath ? `<a class="text-link" href="/room/${escapeHtml(roomIdFromPath)}/watch">Watch room</a>` : ""}
-          </form>
+        <section class="auth-layout">
+          <header class="masthead">
+            <div class="eyebrow">Hidden-role table</div>
+            <h1>Miller Hollow</h1>
+            <p>8 players. One village. No moderator needed.</p>
+          </header>
+          <div class="panel auth-panel">
+            <form id="create-form" class="auth-card primary-auth">
+              <h2>Create</h2>
+              <label>Nickname<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
+              <button type="submit">Create room</button>
+            </form>
+            <form id="join-form" class="auth-card">
+              <h2>Join</h2>
+              <label>Room id<input name="roomId" required value="${escapeHtml(roomIdFromPath)}" /></label>
+              <label>Nickname<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
+              <button type="submit">Join room</button>
+              ${roomIdFromPath ? `<a class="text-link" href="/room/${escapeHtml(roomIdFromPath)}/watch">Watch room</a>` : ""}
+            </form>
+          </div>
         </section>
       </main>
     `;
@@ -134,12 +136,13 @@ function render(): void {
   app.innerHTML = `
     <main class="shell game-screen phase-${escapeHtml(String(game?.phase ?? "lobby"))}">
       <header class="topbar">
-        <div>
+        <div class="brand-block">
           <div class="eyebrow">Live room</div>
           <h1>Miller Hollow</h1>
           <p>Room <code data-testid="room-id">${escapeHtml(session.roomId)}</code></p>
         </div>
         <div class="top-actions">
+          ${renderRoomMeta()}
           <div class="status-pill">${escapeHtml(connectionStatus)}</div>
           <button id="leave-button" class="secondary">Leave</button>
         </div>
@@ -148,19 +151,24 @@ function render(): void {
 
       <section class="layout">
         <aside class="sidebar">
-          <section class="panel">
-            <h2>Seats</h2>
-            <div class="seat-list">
+          <section class="panel seat-panel">
+            <div class="panel-heading">
+              <h2>Village Seats</h2>
+              <span>${seats.filter((seat) => seat.nickname).length}/8</span>
+            </div>
+            <div class="seat-list table-grid">
               ${seats
                 .map((seat) => {
                   const player = playerById.get(seat.seatId);
                   const host = seat.seatId === room?.hostSeatId ? " host" : "";
                   const mine = seat.seatId === session?.seatId ? " mine" : "";
                   return `
-                    <div class="seat${host}${mine}">
-                      <strong>${escapeHtml(seat.nickname ?? "Open")}</strong>
-                      <span><i class="status-dot ${escapeHtml(seat.connectionStatus)}"></i>${escapeHtml(seat.seatId)} · ${escapeHtml(seat.connectionStatus)}</span>
-                      ${player ? `<span>${player.alive ? "Alive" : "Dead"}${player.role ? ` · ${escapeHtml(player.role)}` : ""}</span>` : ""}
+                    <div class="seat${host}${mine}${player && !player.alive ? " dead" : ""}">
+                      <div class="seat-main">
+                        <strong>${escapeHtml(seat.nickname ?? "Open")}</strong>
+                        <span><i class="status-dot ${escapeHtml(seat.connectionStatus)}"></i>${escapeHtml(seat.seatId)} · ${escapeHtml(seat.connectionStatus)}</span>
+                      </div>
+                      ${player ? `<span class="seat-state">${player.alive ? "Alive" : "Dead"}${player.role ? ` · ${escapeHtml(player.role)}` : ""}</span>` : ""}
                       ${renderSeatHostActions(seat)}
                     </div>
                   `;
@@ -172,14 +180,17 @@ function render(): void {
 
           ${renderHostTools()}
 
-          <section class="panel">
-            <h2>Your Role</h2>
+          <section class="panel role-panel">
+            <div class="panel-heading">
+              <h2>Your Role</h2>
+              ${privateView ? `<span>${privateView.alive ? "Active" : "Dead"}</span>` : "<span>Hidden</span>"}
+            </div>
             ${renderPrivatePanel()}
           </section>
         </aside>
 
         <section class="main-column">
-          <section class="panel">
+          <section class="panel phase-panel">
             <div class="phase-row">
               <div>
                 <h2>${escapeHtml(labelPhase(game?.phase))}</h2>
@@ -194,7 +205,10 @@ function render(): void {
           </section>
 
           <section class="panel">
-            <h2>Day Chat</h2>
+            <div class="panel-heading">
+              <h2>Day Chat</h2>
+              <span>${(room?.chatMessages ?? []).length}</span>
+            </div>
             <div class="chat-log">
               ${(room?.chatMessages ?? [])
                 .slice(-40)
@@ -210,7 +224,10 @@ function render(): void {
           </section>
 
           <section class="panel">
-            <h2>System Log</h2>
+            <div class="panel-heading">
+              <h2>System Log</h2>
+              <span>${(game?.publicEvents ?? []).length}</span>
+            </div>
             <div class="event-log">
               ${(game?.publicEvents ?? [])
                 .slice(-16)
@@ -307,6 +324,18 @@ function renderStartButton(): string {
   if (!session || !room || room.status !== "lobby" || session.seatId !== room.hostSeatId) return "";
   const full = room.seats.every((seat) => seat.nickname);
   return `<button id="start-button" ${full ? "" : "disabled"}>Start game</button>`;
+}
+
+function renderRoomMeta(): string {
+  if (!room) return "";
+  return `
+    <div class="room-meta">
+      <span>${room.status}</span>
+      <span>${room.settings.locked ? "Locked" : "Open"}</span>
+      <span>${room.settings.spectatorsEnabled ? "Watch on" : "Watch off"}</span>
+      ${typeof room.activeSpectators === "number" ? `<span>${room.activeSpectators} watching</span>` : ""}
+    </div>
+  `;
 }
 
 function renderHostTools(): string {

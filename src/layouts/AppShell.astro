@@ -1,0 +1,18 @@
+---
+const { title = "Miller Hollow" } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#121713" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script>
+      import "../web/main.ts";
+    </script>
+  </body>
+</html>

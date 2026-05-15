@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 - Astro UI shell
+
+### Changed
+
+- Migrated the frontend build to Astro static output.
+- Reworked the browser UI shell, lobby seats, room metadata, role panel, phase panel, and host tools styling.
+- Kept Worker, Durable Object, WebSocket, and rules engine surfaces unchanged.
+
+### Fixed
+
+- Secret scanner now skips deleted files still visible in git's staged/deleted listing.
+
 ## 0.2.0 - V2 public play
 
 ### Added
