@@ -2,12 +2,13 @@ import {
   applyCommand,
   buildTimeoutCommand,
   createGame,
-  getBasicPreset,
   getPublicPresetSummary,
   isBasicPresetId,
   mathRandomSource,
+  validateCustomRoleSetup,
   toPrivatePlayerView,
   toPublicView,
+  type CustomRoleSetup,
   type GameCommand,
   type GamePlayer,
   type PrivatePlayerView
@@ -15,6 +16,8 @@ import {
 import {
   createInitialRoomState,
   createPhaseInteraction,
+  configureCustomRoom,
+  getRoomPreset,
   normalizeRoomState,
   occupiedSeatCount,
   resizeSeatsForPreset,
@@ -60,6 +63,7 @@ interface HostSeatRequest extends TokenRequest {
 
 interface InitializeRequest {
   presetId?: string;
+  customRoleSetup?: CustomRoleSetup;
 }
 
 interface ClientMessage {
@@ -324,6 +328,18 @@ export class RoomObject implements DurableObject {
       return json({ error: "Room is already open" }, 409);
     }
     if (!isBasicPresetId(body.presetId)) {
+      if (body.customRoleSetup) {
+        try {
+          validateCustomRoleSetup(body.customRoleSetup);
+          configureCustomRoom(room, body.customRoleSetup);
+        } catch (error) {
+          return json({ error: error instanceof Error ? error.message : "Invalid custom role setup" }, 400);
+        }
+        room.updatedAt = Date.now();
+        await this.saveRoom(room);
+        this.logRoomEvent(room, "room_initialized", { presetId: "custom_roleflow" });
+        return json(this.publicRoomView(room));
+      }
       return json({ error: "Unsupported preset" }, 400);
     }
     resizeSeatsForPreset(room, body.presetId);
@@ -700,7 +716,7 @@ export class RoomObject implements DurableObject {
       id: seat.seatId,
       nickname: seat.nickname as string
     }));
-    room.game = createGame(players, mathRandomSource, room.settings.presetId);
+    room.game = createGame(players, mathRandomSource, getRoomPreset(room));
     room.status = "playing";
     for (const seat of room.seats) {
       seat.ready = false;
@@ -1283,7 +1299,7 @@ export class RoomObject implements DurableObject {
   }
 
   private publicRoomView(room: RoomState) {
-    const preset = getBasicPreset(room.settings.presetId);
+    const preset = getRoomPreset(room);
     return {
       roomId: room.roomId,
       status: room.status,

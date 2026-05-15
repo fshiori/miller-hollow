@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   applyCommand,
   buildTimeoutCommand,
+  createCustomRoleflowPreset,
   createGame,
+  recommendedSeerCount,
+  recommendedWerewolfCount,
   toPrivatePlayerView,
   toPublicView,
   type GamePlayer,
@@ -70,7 +73,7 @@ describe("Miller Hollow V1 engine", () => {
     };
 
     for (const preset of BASIC_PRESETS) {
-      const game = createGame(players(preset.playerCount), zeroRandom, preset.id);
+      const game = createGame(players(preset.playerCount), zeroRandom, preset);
       const counts = Object.values(game.roles).reduce<Record<string, number>>((acc, role) => {
         acc[role] = (acc[role] ?? 0) + 1;
         return acc;
@@ -99,6 +102,53 @@ describe("Miller Hollow V1 engine", () => {
       villager: 4
     });
     expect(game.phase).toBe("night_werewolves");
+  });
+
+  it("validates V5.1 rulebook recommendations for custom roleflow setup", () => {
+    expect(Array.from({ length: 4 }, (_, index) => recommendedWerewolfCount(index + 8))).toEqual([2, 2, 2, 2]);
+    expect(Array.from({ length: 6 }, (_, index) => recommendedWerewolfCount(index + 12))).toEqual([3, 3, 3, 3, 3, 3]);
+    expect(recommendedWerewolfCount(18)).toBe(4);
+    expect(recommendedSeerCount(18)).toBe(1);
+
+    expect(() =>
+      createCustomRoleflowPreset({
+        playerCount: 12,
+        roles: { werewolf: 2, seer: 1, hunter: 1, villager: 8 },
+        sheriffEnabled: true,
+        nightOrder: "official",
+        werewolfTimeoutNoKill: true
+      })
+    ).toThrow("Recommended Werewolf count");
+
+    expect(() =>
+      createCustomRoleflowPreset({
+        playerCount: 8,
+        roles: { werewolf: 2, seer: 0, hunter: 1, villager: 5 },
+        sheriffEnabled: true,
+        nightOrder: "official",
+        werewolfTimeoutNoKill: true
+      })
+    ).toThrow("Recommended Seer count");
+  });
+
+  it("creates a V5.1 custom roleflow game from a locked pre-room setup", () => {
+    const preset = createCustomRoleflowPreset({
+      playerCount: 12,
+      roles: { werewolf: 3, seer: 1, witch: 1, hunter: 1, villager: 6 },
+      sheriffEnabled: true,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true
+    });
+    const game = createGame(players(12), zeroRandom, preset);
+    const counts = Object.values(game.roles).reduce<Record<string, number>>((acc, role) => {
+      acc[role] = (acc[role] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    expect(game.phase).toBe("night_seer");
+    expect(game.rules.sheriffEnabled).toBe(true);
+    expect(game.rules.werewolfTimeoutNoKill).toBe(true);
+    expect(counts).toEqual({ werewolf: 3, seer: 1, witch: 1, hunter: 1, villager: 6 });
   });
 
   it("keeps hidden roles private for larger official presets before endgame", () => {

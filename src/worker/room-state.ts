@@ -1,4 +1,14 @@
-import { DEFAULT_BASIC_PRESET_ID, getBasicPreset, isBasicPresetId, type BasicPresetId, type GameState } from "../engine";
+import {
+  createCustomRoleflowPreset,
+  DEFAULT_BASIC_PRESET_ID,
+  getBasicPreset,
+  isBasicPresetId,
+  type BasicPresetId,
+  type CustomRoleSetup,
+  type GameState,
+  type PresetId,
+  type RolePreset
+} from "../engine";
 import type { Phase } from "../engine/phases";
 
 export type RoomStatus = "lobby" | "playing" | "ended";
@@ -21,7 +31,8 @@ export interface RoomState {
   status: RoomStatus;
   settings: {
     playerCount: SupportedPlayerCount;
-    presetId: BasicPresetId;
+    presetId: PresetId;
+    customRoleSetup?: CustomRoleSetup;
     spectatorsEnabled: boolean;
     locked: boolean;
   };
@@ -107,11 +118,12 @@ export function createEmptySeats(playerCount: SupportedPlayerCount): SeatState[]
 }
 
 export function normalizeRoomState(room: RoomState): RoomState {
-  const settings = room.settings as RoomState["settings"] & { presetId?: unknown; playerCount?: unknown };
-  const preset = isBasicPresetId(settings.presetId) ? getBasicPreset(settings.presetId) : getBasicPreset(DEFAULT_BASIC_PRESET_ID);
+  const settings = room.settings as RoomState["settings"] & { presetId?: unknown; playerCount?: unknown; customRoleSetup?: CustomRoleSetup };
+  const preset = roomPresetFromSettings(settings);
   room.settings = {
     playerCount: preset.playerCount,
     presetId: preset.id,
+    ...(preset.id === "custom_roleflow" && settings.customRoleSetup ? { customRoleSetup: settings.customRoleSetup } : {}),
     spectatorsEnabled: settings.spectatorsEnabled ?? true,
     locked: settings.locked ?? false
   };
@@ -182,6 +194,35 @@ export function resizeSeatsForPreset(room: RoomState, presetId: BasicPresetId): 
       delete seat.readyAt;
     }
   }
+}
+
+export function configureCustomRoom(room: RoomState, setup: CustomRoleSetup): void {
+  const preset = createCustomRoleflowPreset(setup);
+  const occupied = occupiedSeatCount(room);
+  if (preset.playerCount < occupied) {
+    throw new Error(`Cannot reduce to ${preset.playerCount} players while ${occupied} seats are occupied`);
+  }
+  room.settings.playerCount = preset.playerCount;
+  room.settings.presetId = preset.id;
+  room.settings.customRoleSetup = setup;
+  room.seats = normalizeSeats(room.seats, preset.playerCount);
+  for (const seat of room.seats) {
+    if (seat.nickname) {
+      seat.ready = false;
+      delete seat.readyAt;
+    }
+  }
+}
+
+export function getRoomPreset(room: RoomState): RolePreset {
+  return roomPresetFromSettings(room.settings);
+}
+
+function roomPresetFromSettings(settings: { presetId?: unknown; customRoleSetup?: CustomRoleSetup }): RolePreset {
+  if (settings.presetId === "custom_roleflow" && settings.customRoleSetup) {
+    return createCustomRoleflowPreset(settings.customRoleSetup);
+  }
+  return isBasicPresetId(settings.presetId) ? getBasicPreset(settings.presetId) : getBasicPreset(DEFAULT_BASIC_PRESET_ID);
 }
 
 function normalizeSeats(seats: SeatState[], playerCount: SupportedPlayerCount): SeatState[] {

@@ -223,6 +223,7 @@ export function labelPreset(label: string | undefined, playerCount: number): str
   if (!label) return `${playerCount} 人基本局`;
   if (label.includes("official beginner")) return `${playerCount} 人官方基本局`;
   if (label.includes("official roleflow")) return `${playerCount} 人官方進階局`;
+  if (label.includes("custom roleflow")) return `${playerCount} 人自定義進階局`;
   if (label.includes("app basic")) return `${playerCount} 人相容基本局`;
   return label;
 }

@@ -1,10 +1,10 @@
 import { RoomObject } from "./room-object";
-import { isBasicPresetId } from "../engine";
+import { isBasicPresetId, validateCustomRoleSetup, type CustomRoleSetup } from "../engine";
 import type { Env } from "./env";
 
 export { RoomObject };
 
-const APP_VERSION = "0.5.0";
+const APP_VERSION = "0.5.1";
 const CREATE_ROOM_LIMIT = { limit: 10, windowMs: 60_000 };
 const SMOKE_CREATE_ROOM_LIMIT = { limit: 50, windowMs: 60_000 };
 const createRoomBuckets = new Map<string, RateBucket>();
@@ -16,6 +16,7 @@ interface RateBucket {
 
 interface CreateRoomRequest {
   presetId?: unknown;
+  customRoleSetup?: CustomRoleSetup;
 }
 
 export default {
@@ -45,7 +46,13 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/api/rooms") {
       const body = (await request.json().catch(() => ({}))) as CreateRoomRequest;
-      if (body.presetId !== undefined && !isBasicPresetId(body.presetId)) {
+      if (body.customRoleSetup) {
+        try {
+          validateCustomRoleSetup(body.customRoleSetup);
+        } catch (error) {
+          return Response.json({ error: error instanceof Error ? error.message : "Invalid custom role setup" }, { status: 400 });
+        }
+      } else if (body.presetId !== undefined && !isBasicPresetId(body.presetId)) {
         return Response.json({ error: "Unsupported preset" }, { status: 400 });
       }
       const client = request.headers.get("cf-connecting-ip") ?? "local";
@@ -57,12 +64,12 @@ export default {
       const stub = env.ROOMS.get(id);
       const joinUrl = `/room/${id.toString()}`;
       await stub.fetch(new Request(`${url.origin}/rooms/${id.toString()}/state`));
-      if (body.presetId) {
+      if (body.customRoleSetup || body.presetId) {
         await stub.fetch(
           new Request(`${url.origin}/rooms/${id.toString()}/initialize`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ presetId: body.presetId })
+            body: JSON.stringify(body.customRoleSetup ? { customRoleSetup: body.customRoleSetup } : { presetId: body.presetId })
           })
         );
       }

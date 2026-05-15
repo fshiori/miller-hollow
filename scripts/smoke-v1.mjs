@@ -39,6 +39,28 @@ try {
   assert(health.ok === true, "health endpoint did not return ok");
   assert(health.storage === "durable_object_sqlite", "health endpoint returned unexpected storage");
   await expectHttpError("/api/rooms", 400, { presetId: "unsupported" });
+  await expectHttpError("/api/rooms", 400, {
+    customRoleSetup: {
+      playerCount: 12,
+      roles: { werewolf: 2, seer: 1, hunter: 1, villager: 8 },
+      sheriffEnabled: true,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true
+    }
+  });
+  const customRoom = await post("/api/rooms", {
+    customRoleSetup: {
+      playerCount: 12,
+      roles: { werewolf: 3, seer: 1, witch: 1, hunter: 1, villager: 6 },
+      sheriffEnabled: true,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true
+    }
+  });
+  const customState = await get(`/api/rooms/${customRoom.roomId}/state`);
+  assert(customState.settings.presetId === "custom_roleflow", "custom roleflow preset was not selected");
+  assert(customState.seats.length === 12, "custom roleflow did not create expected seats");
+  assert(customState.preset?.roleSummary?.some((entry) => entry.role === "witch" && entry.count === 1), "custom roleflow summary missing Witch");
   await smokeAllPresetStarts();
   console.log("Preset smoke passed");
   await smokeOfficialRoleflow();
@@ -169,6 +191,7 @@ try {
     type: "day_chat",
     message: "night chat should fail"
   });
+  console.log("Night action rejection smoke passed");
   const villagerIndex = privates.findIndex((view) => view.role !== "werewolf");
   await expectSocketError(room.roomId, joined[villagerIndex], {
     type: "werewolf_chat",
@@ -186,6 +209,7 @@ try {
   await expectSpectatorPublicOnly(room.roomId, wolfMessage);
   observer = await observerState(room.roomId, joined[0]);
   assert(JSON.stringify(observer).includes(wolfMessage), "observer state did not include werewolf chat");
+  console.log("Werewolf chat smoke passed");
 
   const wolfTarget = privates[wolfIndex].legalTargets[0];
   await socketSend(room.roomId, joined[wolfIndex], { type: "propose_werewolf_target", targetId: wolfTarget }, undefined);
@@ -203,17 +227,20 @@ try {
   await socketSend(room.roomId, joined[witchIndex], {
     type: "night_action"
   }, "day_discussion");
+  console.log("Night resolution smoke passed");
 
   const living = await livingSessions(room.roomId, joined);
   await socketSend(room.roomId, living[0], {
     type: "day_chat",
     message: "Smoke test day chat"
   }, "day_discussion");
+  console.log("Day chat smoke passed");
 
   for (const player of await livingSessions(room.roomId, joined)) {
     await socketSend(room.roomId, player, { type: "set_day_ready", ready: true }, undefined);
   }
   await waitForPhase(room.roomId, "day_vote", 5_000);
+  console.log("Day readiness smoke passed");
   const target = (await get(`/api/rooms/${room.roomId}/state`)).game.players.find((player) => player.alive).id;
   const votingPlayers = await livingSessions(room.roomId, joined);
   await socketSend(room.roomId, votingPlayers[0], { type: "vote", targetId: target }, undefined);
@@ -222,6 +249,7 @@ try {
   publicState = await get(`/api/rooms/${room.roomId}/state`);
   assert(!JSON.stringify(publicState).includes('"votes"'), "public state leaked vote map");
   assert((publicState.game.voteResults ?? []).length === 0, "public state revealed vote results before vote resolution");
+  console.log("Live vote hidden-info smoke passed");
   for (const player of votingPlayers.slice(1)) {
     await socketSend(room.roomId, player, { type: "vote", targetId: target }, undefined);
   }

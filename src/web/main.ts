@@ -62,12 +62,13 @@ interface RoomView {
   settings: {
     playerCount: number;
     presetId: string;
+    customRoleSetup?: CustomRoleSetup;
     spectatorsEnabled: boolean;
     locked: boolean;
   };
   preset?: {
     id: string;
-    family: "official_basic" | "official_roleflow" | "app_basic";
+    family: "official_basic" | "official_roleflow" | "custom_roleflow" | "app_basic";
     label: string;
     rulesSource: "official_rulebook" | "miller_hollow_app";
     playerCount: number;
@@ -114,6 +115,20 @@ interface RoomView {
     blockedReason?: string;
   };
   activeSpectators?: number;
+}
+
+interface CustomRoleSetup {
+  playerCount: number;
+  roles: {
+    werewolf: number;
+    seer: number;
+    witch: number;
+    hunter: number;
+    villager: number;
+  };
+  sheriffEnabled: boolean;
+  nightOrder: "official" | "legacy";
+  werewolfTimeoutNoKill: boolean;
 }
 
 interface ObserverRoomView extends RoomView {
@@ -262,6 +277,26 @@ function render(): void {
                   }).join("")}
                 </select>
               </label>
+              <label class="check"><input id="custom-role-toggle" name="customRoleflow" type="checkbox" /> 自定義角色</label>
+              <div id="custom-role-panel" class="custom-role-panel" hidden>
+                <label>自定義人數
+                  <select name="customPlayerCount">
+                    ${Array.from({ length: 11 }, (_, index) => {
+                      const count = index + 8;
+                      return `<option value="${count}">${count} 人</option>`;
+                    }).join("")}
+                  </select>
+                </label>
+                <div class="role-count-grid">
+                  <label>狼人<input name="werewolfCount" type="number" min="1" max="4" value="2" /></label>
+                  <label>預言家<input name="seerCount" type="number" min="0" max="1" value="1" /></label>
+                  <label>女巫<input name="witchCount" type="number" min="0" max="1" value="0" /></label>
+                  <label>獵人<input name="hunterCount" type="number" min="0" max="1" value="1" /></label>
+                  <label>村民<input name="villagerCount" type="number" readonly value="4" /></label>
+                </div>
+                <label class="check"><input name="sheriffEnabled" type="checkbox" checked /> 啟用警長</label>
+                <p id="custom-role-warning" class="muted"></p>
+              </div>
               <button type="submit">建立房間</button>
             </form>
             <form id="join-form" class="auth-card">
@@ -984,19 +1019,30 @@ function targetForm(id: string, label: string, targets: string[], button: string
 }
 
 function bindAuthForms(): void {
-  document.querySelector<HTMLFormElement>("#create-form")?.addEventListener("submit", async (event) => {
+  const createForm = document.querySelector<HTMLFormElement>("#create-form");
+  bindCustomRoleSetup(createForm);
+  createForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
-    const nickname = String(new FormData(form).get("nickname") ?? "");
-    const presetId = String(new FormData(form).get("presetId") ?? "official_basic_8");
+    const data = new FormData(form);
+    const nickname = String(data.get("nickname") ?? "");
+    const customRoleSetup = data.get("customRoleflow") === "on" ? readCustomRoleSetup(form) : undefined;
+    if (customRoleSetup) {
+      const validation = customRoleSetupWarning(customRoleSetup);
+      if (validation) {
+        alert(`目前角色配置和規則書建議不一致，請先調整後再建立房間。\n${validation}`);
+        return;
+      }
+    }
+    const presetId = String(data.get("presetId") ?? "official_basic_8");
     await runUiAction(async () => {
       const roomResponse = await fetch("/api/rooms", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ presetId })
+        body: JSON.stringify(customRoleSetup ? { customRoleSetup } : { presetId })
       });
-      const created = (await roomResponse.json()) as { roomId: string };
-      if (!roomResponse.ok) throw new Error("Create room failed");
+      const created = (await roomResponse.json()) as { roomId: string; error?: string };
+      if (!roomResponse.ok) throw new Error(created.error ?? "Create room failed");
       await joinRoom(created.roomId, nickname);
     });
   });
@@ -1006,6 +1052,82 @@ function bindAuthForms(): void {
     const data = new FormData(form);
     await runUiAction(() => joinRoom(String(data.get("roomId") ?? ""), String(data.get("nickname") ?? "")));
   });
+}
+
+function bindCustomRoleSetup(form: HTMLFormElement | null): void {
+  if (!form) return;
+  const toggle = form.querySelector<HTMLInputElement>("#custom-role-toggle");
+  const panel = form.querySelector<HTMLDivElement>("#custom-role-panel");
+  const playerCount = form.elements.namedItem("customPlayerCount") as HTMLSelectElement | null;
+  const inputs = ["werewolfCount", "seerCount", "witchCount", "hunterCount"].map((name) => form.elements.namedItem(name) as HTMLInputElement | null);
+  const refresh = () => {
+    if (panel && toggle) panel.hidden = !toggle.checked;
+    if (!toggle?.checked) return;
+    const count = Number(playerCount?.value ?? 8);
+    const wolfInput = form.elements.namedItem("werewolfCount") as HTMLInputElement | null;
+    const seerInput = form.elements.namedItem("seerCount") as HTMLInputElement | null;
+    if (document.activeElement === playerCount) {
+      if (wolfInput) wolfInput.value = String(recommendedWerewolves(count));
+      if (seerInput) seerInput.value = "1";
+    }
+    updateDerivedVillagers(form);
+    const setup = readCustomRoleSetup(form);
+    const warning = customRoleSetupWarning(setup);
+    const warningElement = form.querySelector<HTMLParagraphElement>("#custom-role-warning");
+    if (warningElement) warningElement.textContent = warning;
+  };
+  toggle?.addEventListener("change", refresh);
+  playerCount?.addEventListener("change", refresh);
+  for (const input of inputs) input?.addEventListener("input", refresh);
+  refresh();
+}
+
+function readCustomRoleSetup(form: HTMLFormElement): CustomRoleSetup {
+  const value = (name: string) => Number((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value ?? 0);
+  const playerCount = value("customPlayerCount");
+  const roles = {
+    werewolf: value("werewolfCount"),
+    seer: value("seerCount"),
+    witch: value("witchCount"),
+    hunter: value("hunterCount"),
+    villager: Math.max(0, value("villagerCount"))
+  };
+  return {
+    playerCount,
+    roles,
+    sheriffEnabled: (form.elements.namedItem("sheriffEnabled") as HTMLInputElement | null)?.checked ?? true,
+    nightOrder: "official",
+    werewolfTimeoutNoKill: true
+  };
+}
+
+function updateDerivedVillagers(form: HTMLFormElement): void {
+  const value = (name: string) => Number((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value ?? 0);
+  const villagerInput = form.elements.namedItem("villagerCount") as HTMLInputElement | null;
+  if (!villagerInput) return;
+  const villagers = value("customPlayerCount") - value("werewolfCount") - value("seerCount") - value("witchCount") - value("hunterCount");
+  villagerInput.value = String(Math.max(0, villagers));
+}
+
+function customRoleSetupWarning(setup: CustomRoleSetup): string {
+  const expectedWerewolves = recommendedWerewolves(setup.playerCount);
+  if (setup.roles.werewolf !== expectedWerewolves) {
+    return `依規則書建議，${setup.playerCount} 人局應有 ${expectedWerewolves} 位狼人。`;
+  }
+  if (setup.roles.seer !== 1) {
+    return "依規則書建議，預言家應為 1 位。";
+  }
+  const total = Object.values(setup.roles).reduce((sum, count) => sum + count, 0);
+  if (total !== setup.playerCount) {
+    return `角色總數需等於 ${setup.playerCount} 人。`;
+  }
+  return "";
+}
+
+function recommendedWerewolves(playerCount: number): number {
+  if (playerCount <= 11) return 2;
+  if (playerCount <= 17) return 3;
+  return 4;
 }
 
 function bindRoomActions(): void {

@@ -502,11 +502,65 @@ Deployment:
 - Deployed at: `2026-05-15T12:44:00Z`
 - Note: deploy is from the current working tree; code is not pushed.
 
+## 0.5.1 - V5.1 Pre-Room Custom Role Setup
+
+Status:
+
+- Completed locally.
+
+Completed:
+
+- Added `custom_roleflow` pre-room setup model.
+- Added rulebook-guided Werewolf and Seer recommendation helpers.
+- Added Worker validation before custom room creation.
+- Added create-room UI controls and alert blocking for invalid recommended counts.
+- Added engine tests for custom roleflow validation and game creation.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+
+Release:
+
+- Commit/tag only; deployment is deferred until the full V5.1-V5.3 sequence is complete.
+
 ## Planned Next Versions
 
-### Future
+### V5.1 - Pre-Room Custom Role Setup
 
 Planned:
 
-- Evaluate Cupid, Thief, and other advanced roles after V5 roleflow is stable.
+- Add pre-room custom role setup for existing roles.
+- Enforce rulebook-guided Werewolf and Seer count validation before room creation.
+- Keep room settings locked after creation.
+
+### V5.2 - Thief Opening Choice
+
+Planned:
+
+- Add Thief as a pre-game role-choice workflow.
+- Add exactly two hidden spare role cards when Thief is enabled.
+- Resolve Thief choice before the first normal night phase.
+- Keep spare cards hidden from public and spectator views.
+
+### V5.3 - Cupid And Lovers
+
+Planned:
+
+- Add Cupid first-night Lovers selection.
+- Add Lover private partner knowledge.
+- Add heartbreak death chain.
+- Add Lovers win-condition handling.
+
+### Later
+
+Planned:
+
+- Evaluate other advanced roles after V5.1-V5.3 are stable.
 - Little Girl requires a separate online-safety design pass before any implementation.

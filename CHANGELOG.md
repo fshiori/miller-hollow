@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.1 - Pre-Room Custom Role Setup
+
+### Added
+
+- `custom_roleflow` room setup for pre-room role configuration.
+- Rulebook-guided Werewolf and Seer / Fortune Teller recommendations for 8-18 players.
+- Create-room UI controls for Werewolf, Seer, Witch, Hunter, Villager, and Sheriff toggle.
+- Client-side warnings and submit blocking when Werewolf or Seer counts do not match the rulebook recommendation.
+- Worker-side validation for custom role setup before room creation.
+- Engine tests for custom roleflow validation and custom game creation.
+- V5.1 design and implementation documents.
+
+### Changed
+
+- App version reports `0.5.1`.
+
 ## 0.5.0 - Hunter And Sheriff Role Flow
 
 ### Added

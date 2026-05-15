@@ -17,11 +17,13 @@ export type OfficialRoleflowPresetId = "official_roleflow_8";
 export type AppBasicPresetId = "app_basic_8" | "app_basic_9" | "app_basic_10" | "app_basic_11" | "app_basic_12";
 export type LegacyBasicPresetId = "basic_8" | "basic_9" | "basic_10" | "basic_11" | "basic_12";
 export type BasicPresetId = OfficialBasicPresetId | OfficialRoleflowPresetId | AppBasicPresetId | LegacyBasicPresetId;
-export type PresetFamily = "official_basic" | "official_roleflow" | "app_basic";
+export type CustomPresetId = "custom_roleflow";
+export type PresetId = BasicPresetId | CustomPresetId;
+export type PresetFamily = "official_basic" | "official_roleflow" | "custom_roleflow" | "app_basic";
 export type RulesSource = "official_rulebook" | "miller_hollow_app";
 
 export interface RolePreset {
-  id: BasicPresetId;
+  id: PresetId;
   family: PresetFamily;
   label: string;
   rulesSource: RulesSource;
@@ -34,8 +36,16 @@ export interface RolePreset {
   aliasOf?: AppBasicPresetId;
 }
 
+export interface CustomRoleSetup {
+  playerCount: number;
+  roles: Partial<Record<Role, number>>;
+  sheriffEnabled: boolean;
+  nightOrder: "official" | "legacy";
+  werewolfTimeoutNoKill: boolean;
+}
+
 export interface PublicPresetSummary {
-  id: BasicPresetId;
+  id: PresetId;
   family: PresetFamily;
   label: string;
   rulesSource: RulesSource;
@@ -165,8 +175,78 @@ export function getPublicPresetSummary(preset: RolePreset): PublicPresetSummary 
   };
 }
 
+export function recommendedWerewolfCount(playerCount: number): number {
+  if (playerCount >= 8 && playerCount <= 11) return 2;
+  if (playerCount >= 12 && playerCount <= 17) return 3;
+  if (playerCount === 18) return 4;
+  throw new Error("Custom role setup requires 8-18 players");
+}
+
+export function recommendedSeerCount(playerCount: number): number {
+  if (playerCount >= 8 && playerCount <= 18) return 1;
+  throw new Error("Custom role setup requires 8-18 players");
+}
+
+export function createCustomRoleflowPreset(setup: CustomRoleSetup): RolePreset {
+  validateCustomRoleSetup(setup);
+  return createPreset({
+    id: "custom_roleflow",
+    family: "custom_roleflow",
+    label: `${setup.playerCount}-player custom roleflow`,
+    rulesSource: "official_rulebook",
+    playerCount: setup.playerCount,
+    counts: setup.roles,
+    nightOrder: setup.nightOrder,
+    werewolfTimeoutNoKill: setup.werewolfTimeoutNoKill,
+    sheriffEnabled: setup.sheriffEnabled
+  });
+}
+
+export function validateCustomRoleSetup(setup: CustomRoleSetup): void {
+  if (!Number.isInteger(setup.playerCount) || setup.playerCount < 8 || setup.playerCount > 18) {
+    throw new Error("Custom role setup requires 8-18 players");
+  }
+  const roles = setup.roles ?? {};
+  const werewolves = roles.werewolf ?? 0;
+  const seers = roles.seer ?? 0;
+  const witches = roles.witch ?? 0;
+  const hunters = roles.hunter ?? 0;
+  const villagers = roles.villager ?? 0;
+  for (const [role, count] of Object.entries(roles) as Array<[Role, number | undefined]>) {
+    if (!Number.isInteger(count) || (count ?? 0) < 0) {
+      throw new Error(`Invalid custom role count for ${role}`);
+    }
+    if (!roleDefinitions[role]?.implemented) {
+      throw new Error(`Custom role setup includes unsupported role ${role}`);
+    }
+  }
+  if (werewolves !== recommendedWerewolfCount(setup.playerCount)) {
+    throw new Error(`Recommended Werewolf count for ${setup.playerCount} players is ${recommendedWerewolfCount(setup.playerCount)}`);
+  }
+  if (seers !== recommendedSeerCount(setup.playerCount)) {
+    throw new Error("Recommended Seer count is 1");
+  }
+  if (witches > 1 || hunters > 1 || seers > 1) {
+    throw new Error("Seer, Witch, and Hunter are limited to 0 or 1");
+  }
+  if (werewolves < 1) {
+    throw new Error("Custom role setup requires at least one Werewolf");
+  }
+  const nonWerewolves = seers + witches + hunters + villagers;
+  if (nonWerewolves < 1) {
+    throw new Error("Custom role setup requires at least one non-Werewolf");
+  }
+  const total = werewolves + nonWerewolves;
+  if (total !== setup.playerCount) {
+    throw new Error(`Custom role setup has ${total} roles for ${setup.playerCount} players`);
+  }
+  if (setup.nightOrder !== "official" && setup.nightOrder !== "legacy") {
+    throw new Error("Unsupported custom night order");
+  }
+}
+
 function createPreset(input: {
-  id: BasicPresetId;
+  id: PresetId;
   family: PresetFamily;
   label: string;
   rulesSource: RulesSource;
@@ -200,7 +280,7 @@ function createPreset(input: {
 }
 
 function expandRoles(counts: Partial<Record<Role, number>>): Role[] {
-  return (["werewolf", "seer", "witch", "hunter", "villager"] as const).flatMap((role) =>
+  return (["werewolf", "seer", "witch", "hunter", "villager", "thief", "cupid"] as const).flatMap((role) =>
     Array.from({ length: counts[role] ?? 0 }, () => role)
   );
 }
@@ -210,7 +290,7 @@ function roleSummary(roles: readonly Role[]): Array<{ role: Role; label: string;
     acc[role] = (acc[role] ?? 0) + 1;
     return acc;
   }, {});
-  return (["werewolf", "seer", "witch", "hunter", "villager"] as const)
+  return (["werewolf", "seer", "witch", "hunter", "villager", "thief", "cupid"] as const)
     .map((role) => ({ role, label: roleDefinitions[role].displayName, count: counts[role] ?? 0 }))
     .filter((entry) => entry.count > 0);
 }
