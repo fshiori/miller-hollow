@@ -4,7 +4,7 @@ import type { Env } from "./env";
 
 export { RoomObject };
 
-const APP_VERSION = "0.4.5";
+const APP_VERSION = "0.4.6";
 const CREATE_ROOM_LIMIT = { limit: 10, windowMs: 60_000 };
 const SMOKE_CREATE_ROOM_LIMIT = { limit: 50, windowMs: 60_000 };
 const createRoomBuckets = new Map<string, RateBucket>();
@@ -126,6 +126,7 @@ function isRoomActionAllowed(action: string): boolean {
     "host/disable-spectators",
     "host/kick",
     "host/transfer",
+    "host/advance-phase",
     "host/reset-lobby"
   ].includes(action);
 }

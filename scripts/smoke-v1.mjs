@@ -65,6 +65,10 @@ try {
     seatId: joined[1].seatId,
     token: joined[1].token
   });
+  await expectHttpError(`/api/rooms/${room.roomId}/host/advance-phase`, 403, {
+    seatId: joined[1].seatId,
+    token: joined[1].token
+  });
 
   const reconnected = await post(`/api/rooms/${room.roomId}/reconnect`, {
     seatId: joined[0].seatId,
@@ -170,14 +174,18 @@ try {
     message: "Smoke test day chat"
   }, "day_discussion");
 
-  await waitForPhase(room.roomId, "day_vote", 30_000);
+  await post(`/api/rooms/${room.roomId}/host/advance-phase`, {
+    seatId: joined[0].seatId,
+    token: joined[0].token
+  });
+  await waitForPhase(room.roomId, "day_vote", 5_000);
   const target = (await get(`/api/rooms/${room.roomId}/state`)).game.players.find((player) => player.alive).id;
   for (const player of await livingSessions(room.roomId, joined)) {
     await socketSend(room.roomId, player, { type: "vote", targetId: target }, undefined);
   }
   await waitForNotPhase(room.roomId, "day_vote", 5_000);
   assert(!publicStateHasRoles(await get(`/api/rooms/${room.roomId}/state`)), "public state leaked roles after non-end vote");
-  console.log("V4.5 smoke passed");
+  console.log("V4.6 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");

@@ -1,6 +1,6 @@
 # Miller Hollow
 
-Basic Edition V4.5 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
+Basic Edition V4.6 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
 
 The player-facing browser UI is Traditional Chinese. Public API fields, internal ids, and developer diagnostics remain English for compatibility.
 

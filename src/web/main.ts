@@ -422,6 +422,7 @@ function renderHostTools(): string {
         <button id="diagnostics-button" class="secondary" type="button">診斷資訊</button>
         <button id="lock-button" class="secondary" type="button">${room.settings.locked ? "解鎖" : "鎖定"}</button>
         <button id="spectators-button" class="secondary" type="button">${room.settings.spectatorsEnabled ? "關閉觀戰" : "開放觀戰"}</button>
+        ${room.status === "playing" && room.game?.phase !== "ended" ? `<button id="advance-phase-button" class="secondary" type="button">快轉階段</button>` : ""}
       </div>
       ${room.status !== "playing" ? `<button id="reset-button" type="button">重設大廳</button>` : ""}
     </section>
@@ -609,6 +610,9 @@ function bindRoomActions(): void {
   });
   document.querySelector<HTMLButtonElement>("#spectators-button")?.addEventListener("click", () => {
     void hostControl(room?.settings.spectatorsEnabled ? "disable-spectators" : "enable-spectators");
+  });
+  document.querySelector<HTMLButtonElement>("#advance-phase-button")?.addEventListener("click", () => {
+    void hostControl("advance-phase");
   });
   document.querySelector<HTMLButtonElement>("#reset-button")?.addEventListener("click", () => {
     void resetRoom();

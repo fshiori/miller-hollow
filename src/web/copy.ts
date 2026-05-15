@@ -139,7 +139,8 @@ const errorLabels: Record<string, string> = {
   "Witch poison has already been used": "女巫已經使用過毒藥。",
   "Witch cannot poison themselves in V1": "女巫不能毒殺自己。",
   "No living players": "沒有存活玩家。",
-  "Unknown player": "未知玩家。"
+  "Unknown player": "未知玩家。",
+  "Only playing games can advance phases": "只有進行中的遊戲可以快轉階段。"
 };
 
 export function labelRole(role: RoleId | undefined): string {

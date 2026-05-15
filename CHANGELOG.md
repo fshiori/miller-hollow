@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.6 - Host Phase Fast-Forward
+
+### Added
+
+- Host-only phase fast-forward control for demo and low-friction table flow.
+- `/host/advance-phase` room control for authenticated hosts.
+- Smoke coverage for host-only fast-forward authorization and day discussion to vote advancement.
+
+### Changed
+
+- Browser smoke uses host fast-forward instead of waiting for the full day discussion timer.
+- App version reports `0.4.6`.
+
 ## 0.4.5 - Traditional Chinese UX Polish
 
 ### Added

@@ -310,6 +310,42 @@ Deployment:
 - Deployed at: `2026-05-15T08:13:04Z`
 - Note: deploy is from the current working tree; code is not pushed or tagged.
 
+## 0.4.6 - V4.6 Host Phase Fast-Forward
+
+Status:
+
+- Deployed.
+
+Completed:
+
+- Added host-only `/host/advance-phase`.
+- Added a Traditional Chinese host tool button: `快轉階段`.
+- Fast-forward behavior:
+  - Day discussion advances to day vote.
+  - Day vote resolves with missing votes as abstentions.
+  - Night phases use the existing timeout fallback command.
+- Added smoke coverage for host-only authorization and day discussion fast-forward.
+- Updated browser smoke to use fast-forward instead of waiting for the full discussion timer.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+
+Deployment:
+
+- URL: `https://miller-hollow.fshiori.workers.dev`
+- App version: `0.4.6`
+- Runtime build sha: `local`
+- Worker Version ID: `f630f42b-e7eb-4514-9dab-9d17c9b9ef2c`
+- Deployed at: `2026-05-15T08:37:49Z`
+- Note: deploy is from the current working tree; code is not pushed or tagged.
+
 ## Planned Next Versions
 
 ### V5 - Complete Official Role Flow

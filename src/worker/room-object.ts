@@ -262,6 +262,9 @@ export class RoomObject implements DurableObject {
       } else if (action === "transfer") {
         this.assertLobby(room);
         this.transferHost(room, body.targetSeatId);
+      } else if (action === "advance-phase") {
+        this.advancePhase(room);
+        this.afterGameMutation(room);
       } else if (action === "reset-lobby") {
         if (room.status === "playing") {
           return json({ error: "Playing games cannot be reset" }, 409);
@@ -578,6 +581,19 @@ export class RoomObject implements DurableObject {
     }
     this.afterGameMutation(room);
     this.logRoomEvent(room, "game_started", { occupiedSeats: room.seats.length, phase: room.game.phase });
+  }
+
+  private advancePhase(room: RoomState): void {
+    if (!room.game || room.status !== "playing" || room.game.phase === "ended") {
+      throw new Error("Only playing games can advance phases");
+    }
+    const command: GameCommand =
+      room.game.phase === "day_discussion"
+        ? { type: "advance_to_vote" }
+        : room.game.phase === "day_vote"
+          ? { type: "resolve_vote", missingVotesAsAbstain: true }
+          : buildTimeoutCommand(room.game, mathRandomSource);
+    room.game = applyCommand(room.game, command).state;
   }
 
   private async setReady(room: RoomState, seatId: string, ready: boolean): Promise<void> {

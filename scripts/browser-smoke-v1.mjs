@@ -101,7 +101,9 @@ try {
   await waitConnected(chatPage);
   await chatPage.locator('#chat-form input[name="message"]').fill("Browser smoke day chat");
   await chatPage.locator('#chat-form button[type="submit"]').click();
-  await waitForAnyPagePhase(pages, "day_vote", 30_000);
+  await pages[0].locator("#advance-phase-button").filter({ hasText: "快轉階段" }).waitFor();
+  await pages[0].locator("#advance-phase-button").click();
+  await waitForAnyPagePhase(pages, "day_vote", 10_000);
 
   for (const page of pages) {
     if (await page.locator("#vote-form").isVisible().catch(() => false)) {
@@ -113,7 +115,7 @@ try {
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V4.5 smoke passed");
+  console.log("Browser V4.6 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {
