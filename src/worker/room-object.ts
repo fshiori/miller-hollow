@@ -28,7 +28,10 @@ const PRODUCTION_PHASE_SECONDS: Record<string, number> = {
   night_seer: 60,
   night_witch: 90,
   day_discussion: 300,
-  day_vote: 90
+  sheriff_election: 90,
+  day_vote: 90,
+  hunter_revenge: 60,
+  sheriff_succession: 60
 };
 
 const SMOKE_PHASE_SECONDS: Record<string, number> = {
@@ -36,7 +39,10 @@ const SMOKE_PHASE_SECONDS: Record<string, number> = {
   night_seer: 35,
   night_witch: 45,
   day_discussion: 20,
-  day_vote: 60
+  sheriff_election: 30,
+  day_vote: 60,
+  hunter_revenge: 30,
+  sheriff_succession: 30
 };
 
 interface JoinRequest {
@@ -284,6 +290,12 @@ export class RoomObject implements DurableObject {
         this.disconnectObservers("Host changed. Host observer closed.");
       } else if (action === "advance-phase") {
         this.advancePhase(room);
+        this.afterGameMutation(room);
+      } else if (action === "open-sheriff-election") {
+        if (!room.game || room.status !== "playing") {
+          throw new Error("Game has not started");
+        }
+        room.game = applyCommand(room.game, { type: "open_sheriff_election", actorId: host.seatId }).state;
         this.afterGameMutation(room);
       } else if (action === "reset-lobby") {
         if (room.status === "playing") {
@@ -656,7 +668,7 @@ export class RoomObject implements DurableObject {
 
     const command = this.messageToCommand(room, seatId, message);
     room.game = applyCommand(room.game, command).state;
-    if (command.type === "submit_vote") {
+    if (command.type === "submit_vote" || command.type === "submit_sheriff_vote") {
       this.resolveVoteIfComplete(room);
     }
     this.logRoomEvent(room, "player_action", { seatId, action: command.type, phase: room.game.phase });
@@ -800,6 +812,15 @@ export class RoomObject implements DurableObject {
     }
     if (message.type === "vote") {
       return { type: "submit_vote", actorId: seatId, targetId: message.targetId ?? "abstain" };
+    }
+    if (message.type === "sheriff_vote") {
+      return { type: "submit_sheriff_vote", actorId: seatId, targetId: message.targetId ?? "abstain" };
+    }
+    if (message.type === "hunter_shot") {
+      return { type: "submit_hunter_shot", actorId: seatId, ...(message.targetId ? { targetId: message.targetId } : {}) };
+    }
+    if (message.type === "sheriff_successor") {
+      return { type: "submit_sheriff_successor", actorId: seatId, ...(message.targetId ? { targetId: message.targetId } : {}) };
     }
     throw new Error("Unsupported message type");
   }
@@ -989,13 +1010,19 @@ export class RoomObject implements DurableObject {
   }
 
   private resolveVoteIfComplete(room: RoomState): void {
-    if (!room.game || room.game.phase !== "day_vote") {
+    if (!room.game || (room.game.phase !== "day_vote" && room.game.phase !== "sheriff_election")) {
       return;
     }
     const livingPlayerIds = room.game.players.filter((player) => room.game?.alive[player.id]).map((player) => player.id);
-    const allVoted = livingPlayerIds.every((playerId) => room.game?.votes[playerId]);
+    const votes = room.game.phase === "day_vote" ? room.game.votes : room.game.sheriff.electionVotes;
+    const allVoted = livingPlayerIds.every((playerId) => votes[playerId]);
     if (allVoted) {
-      room.game = applyCommand(room.game, { type: "resolve_vote", missingVotesAsAbstain: true }).state;
+      room.game = applyCommand(
+        room.game,
+        room.game.phase === "day_vote"
+          ? { type: "resolve_vote", missingVotesAsAbstain: true }
+          : { type: "resolve_sheriff_election", missingVotesAsAbstain: true }
+      ).state;
     }
   }
 
@@ -1008,6 +1035,9 @@ export class RoomObject implements DurableObject {
     }
     if (room.game.phase === "day_vote") {
       return { type: "resolve_vote", missingVotesAsAbstain: true };
+    }
+    if (room.game.phase === "sheriff_election") {
+      return { type: "resolve_sheriff_election", missingVotesAsAbstain: true };
     }
     if (room.game.phase === "night_werewolves") {
       const actorId = this.livingWerewolves(room)[0];
@@ -1285,6 +1315,7 @@ export class RoomObject implements DurableObject {
     const game = room.game;
     const livingPlayerIds = game?.players.filter((player) => game.alive[player.id]).map((player) => player.id) ?? [];
     const votes = game?.phase === "day_vote" ? game.votes : {};
+    const sheriffElectionVotes = game?.phase === "sheriff_election" ? game.sheriff.electionVotes : {};
     return {
       ...publicView,
       activeObservers: this.observerSessions.size,
@@ -1315,6 +1346,17 @@ export class RoomObject implements DurableObject {
             }
           : undefined,
         seerResults: game?.nightActions.seerViews ?? {},
+        sheriff: game
+          ? {
+              holderId: game.sheriff.holderId,
+              electionVotes: sheriffElectionVotes,
+              missingElectionVoterIds:
+                game.phase === "sheriff_election" ? livingPlayerIds.filter((playerId) => !sheriffElectionVotes[playerId]) : [],
+              successionFromId: game.sheriff.successionFromId,
+              electionCount: game.sheriff.electionCount
+            }
+          : undefined,
+        pendingReactions: game?.pendingReactions ?? [],
         witch: game
           ? {
               saveAvailable: game.witchSaveAvailable,
@@ -1323,14 +1365,15 @@ export class RoomObject implements DurableObject {
           : undefined,
         votes,
         missingVoterIds: game?.phase === "day_vote" ? livingPlayerIds.filter((playerId) => !votes[playerId]) : [],
-        voteTally: this.voteTally(votes)
+        voteTally: this.voteTally(game, votes)
       }
     };
   }
 
-  private voteTally(votes: Record<string, string>): Record<string, number> {
-    return Object.values(votes).reduce<Record<string, number>>((counts, targetId) => {
-      counts[targetId] = (counts[targetId] ?? 0) + 1;
+  private voteTally(game: RoomState["game"], votes: Record<string, string>): Record<string, number> {
+    return Object.entries(votes).reduce<Record<string, number>>((counts, [voterId, targetId]) => {
+      const weight = game?.sheriff.holderId === voterId ? 2 : 1;
+      counts[targetId] = (counts[targetId] ?? 0) + weight;
       return counts;
     }, {});
   }

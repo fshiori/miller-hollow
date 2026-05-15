@@ -4,7 +4,7 @@ import type { RandomSource } from "./random";
 import { shuffleWithRandom } from "./random";
 import { teamForRole } from "./roles";
 import type { Role } from "./roles";
-import type { GameEvent, GamePlayer, GameState, PlayerId, PublicVoteResult, ReducerResult } from "./state";
+import type { GameEvent, GamePlayer, GameState, PendingReaction, PlayerId, PublicVoteResult, ReducerResult, ResumeState } from "./state";
 
 let eventCounter = 0;
 
@@ -39,7 +39,7 @@ export function createGame(players: GamePlayer[], random: RandomSource, presetIn
   const startEvent = event("game_started", "The game has started.");
 
   return {
-    phase: "night_werewolves",
+    phase: preset.nightOrder === "official" ? "night_seer" : "night_werewolves",
     round: 1,
     players,
     roles: assignedRoles,
@@ -47,6 +47,13 @@ export function createGame(players: GamePlayer[], random: RandomSource, presetIn
     nightActions: { seerViews: {} },
     votes: {},
     publicVoteResults: [],
+    sheriff: { electionVotes: {}, electionCount: 0 },
+    pendingReactions: [],
+    rules: {
+      nightOrder: preset.nightOrder,
+      werewolfTimeoutNoKill: preset.werewolfTimeoutNoKill,
+      sheriffEnabled: preset.sheriffEnabled
+    },
     witchSaveAvailable: true,
     witchPoisonAvailable: true,
     publicEvents: [startEvent],
@@ -62,16 +69,28 @@ export function applyCommand(state: GameState, command: GameCommand): ReducerRes
   switch (command.type) {
     case "submit_werewolf_target":
       return submitWerewolfTarget(state, command.actorId, command.targetId, command.source ?? "direct");
+    case "skip_werewolf_target":
+      return skipWerewolfTarget(state, command.actorId);
     case "submit_seer_target":
       return submitSeerTarget(state, command.actorId, command.targetId);
     case "submit_witch_action":
       return submitWitchAction(state, command.actorId, command.saveTargetId, command.poisonTargetId);
+    case "open_sheriff_election":
+      return openSheriffElection(state, command.actorId);
+    case "submit_sheriff_vote":
+      return submitSheriffVote(state, command.actorId, command.targetId);
+    case "resolve_sheriff_election":
+      return resolveSheriffElection(state, command.missingVotesAsAbstain);
     case "advance_to_vote":
       return advanceToVote(state);
     case "submit_vote":
       return submitVote(state, command.actorId, command.targetId);
     case "resolve_vote":
       return resolveVote(state, command.missingVotesAsAbstain);
+    case "submit_hunter_shot":
+      return submitHunterShot(state, command.actorId, command.targetId);
+    case "submit_sheriff_successor":
+      return submitSheriffSuccessor(state, command.actorId, command.targetId);
   }
 }
 
@@ -81,6 +100,9 @@ export function buildTimeoutCommand(state: GameState, random: RandomSource): Gam
     const targets = legalWerewolfTargets(state);
     if (!werewolf || targets.length === 0) {
       throw new Error("No legal werewolf timeout command is available");
+    }
+    if (state.rules.werewolfTimeoutNoKill) {
+      return { type: "skip_werewolf_target", actorId: werewolf };
     }
     return {
       type: "submit_werewolf_target",
@@ -110,6 +132,26 @@ export function buildTimeoutCommand(state: GameState, random: RandomSource): Gam
     return { type: "resolve_vote", missingVotesAsAbstain: true };
   }
 
+  if (state.phase === "sheriff_election") {
+    return { type: "resolve_sheriff_election", missingVotesAsAbstain: true };
+  }
+
+  if (state.phase === "hunter_revenge") {
+    const reaction = state.pendingReactions[0];
+    if (reaction?.type !== "hunter_revenge") {
+      throw new Error("No pending Hunter reaction");
+    }
+    return { type: "submit_hunter_shot", actorId: reaction.hunterId };
+  }
+
+  if (state.phase === "sheriff_succession") {
+    const reaction = state.pendingReactions[0];
+    if (reaction?.type !== "sheriff_succession") {
+      throw new Error("No pending Sheriff succession");
+    }
+    return { type: "submit_sheriff_successor", actorId: reaction.fromId };
+  }
+
   throw new Error(`No timeout command for phase ${state.phase}`);
 }
 
@@ -128,10 +170,38 @@ function submitWerewolfTarget(
   const next = cloneState(state);
   next.nightActions.werewolfTarget = targetId;
   next.nightActions.werewolfTargetSource = source;
+  if (next.rules.nightOrder === "official") {
+    if (livingPlayersWithRole(next, "witch")[0]) {
+      next.phase = "night_witch";
+      const phaseEvent = event("phase_changed", "The Witch wakes.");
+      next.publicEvents.push(phaseEvent);
+      return { state: next, events: [phaseEvent] };
+    }
+    const resolved = resolveNightDeaths(next, undefined, undefined);
+    return { state: resolved.state, events: resolved.events };
+  }
   next.phase = "night_seer";
   const phaseEvent = event("phase_changed", "The Seer wakes.");
   next.publicEvents.push(phaseEvent);
   return { state: next, events: [phaseEvent] };
+}
+
+function skipWerewolfTarget(state: GameState, actorId: PlayerId): ReducerResult {
+  assertPhase(state, "night_werewolves");
+  assertLivingRole(state, actorId, "werewolf");
+  if (!state.rules.werewolfTimeoutNoKill) {
+    throw new Error("Werewolves must choose a target");
+  }
+  const next = cloneState(state);
+  next.nightActions.werewolfTargetSource = "timeout";
+  if (livingPlayersWithRole(next, "witch")[0]) {
+    next.phase = "night_witch";
+    const phaseEvent = event("phase_changed", "The Witch wakes.");
+    next.publicEvents.push(phaseEvent);
+    return { state: next, events: [phaseEvent] };
+  }
+  const resolved = resolveNightDeaths(next, undefined, undefined);
+  return { state: resolved.state, events: resolved.events };
 }
 
 function submitSeerTarget(state: GameState, actorId: PlayerId, targetId: PlayerId | undefined): ReducerResult {
@@ -161,6 +231,13 @@ function submitSeerTarget(state: GameState, actorId: PlayerId, targetId: PlayerI
     });
     next.privateEvents[actorId] = [...(next.privateEvents[actorId] ?? []), privateEvent];
     events.push(privateEvent);
+  }
+  if (next.rules.nightOrder === "official") {
+    next.phase = "night_werewolves";
+    const phaseEvent = event("phase_changed", "The Werewolves wake.");
+    next.publicEvents.push(phaseEvent);
+    events.push(phaseEvent);
+    return { state: next, events };
   }
   if (livingPlayersWithRole(next, "witch")[0]) {
     next.phase = "night_witch";
@@ -235,19 +312,68 @@ function resolveNightDeaths(
   );
   next.publicEvents.push(deathEvent);
 
-  const winner = checkWinner(next);
-  if (winner) {
-    next.winner = winner;
-    next.phase = "ended";
-    const endEvent = event("game_ended", `${winner} win.`);
-    next.publicEvents.push(endEvent);
-    return { state: next, events: [deathEvent, endEvent] };
+  return finalizeDeaths(next, deaths, { phase: "day_discussion" }, [deathEvent]);
+}
+
+function openSheriffElection(state: GameState, actorId: PlayerId): ReducerResult {
+  assertPhase(state, "day_discussion");
+  if (!state.rules.sheriffEnabled) {
+    throw new Error("Sheriff election is not enabled for this preset");
+  }
+  assertKnownPlayer(state, actorId);
+  if (state.sheriff.holderId) {
+    throw new Error("Sheriff has already been elected");
+  }
+  const next = cloneState(state);
+  next.phase = "sheriff_election";
+  next.sheriff.electionVotes = {};
+  const phaseEvent = event("phase_changed", "Sheriff election begins.");
+  next.publicEvents.push(phaseEvent);
+  return { state: next, events: [phaseEvent] };
+}
+
+function submitSheriffVote(state: GameState, actorId: PlayerId, targetId: PlayerId | "abstain"): ReducerResult {
+  assertPhase(state, "sheriff_election");
+  assertLivingPlayer(state, actorId);
+  if (targetId !== "abstain") {
+    assertLivingPlayer(state, targetId);
+  }
+  const next = cloneState(state);
+  next.sheriff.electionVotes[actorId] = targetId;
+  return { state: next, events: [] };
+}
+
+function resolveSheriffElection(state: GameState, missingVotesAsAbstain: boolean): ReducerResult {
+  assertPhase(state, "sheriff_election");
+  const next = cloneState(state);
+  if (missingVotesAsAbstain) {
+    for (const player of state.players) {
+      if (state.alive[player.id] && !next.sheriff.electionVotes[player.id]) {
+        next.sheriff.electionVotes[player.id] = "abstain";
+      }
+    }
   }
 
+  const counts = new Map<PlayerId, number>();
+  for (const vote of Object.values(next.sheriff.electionVotes)) {
+    if (vote !== "abstain") {
+      counts.set(vote, (counts.get(vote) ?? 0) + 1);
+    }
+  }
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const top = sorted[0];
+  const tied = top ? sorted.filter(([, count]) => count === top[1]).length > 1 : false;
+  if (top && !tied) {
+    next.sheriff.holderId = top[0];
+  }
+  next.sheriff.electionCount += 1;
   next.phase = "day_discussion";
-  const phaseEvent = event("phase_changed", "Day discussion begins.");
-  next.publicEvents.push(phaseEvent);
-  return { state: next, events: [deathEvent, phaseEvent] };
+  const resultEvent = event(
+    "phase_changed",
+    next.sheriff.holderId ? "The village elected a Sheriff." : "The Sheriff election did not elect anyone."
+  );
+  next.publicEvents.push(resultEvent);
+  return { state: next, events: [resultEvent] };
 }
 
 function advanceToVote(state: GameState): ReducerResult {
@@ -284,9 +410,9 @@ function resolveVote(state: GameState, missingVotesAsAbstain: boolean): ReducerR
   }
 
   const counts = new Map<PlayerId, number>();
-  for (const vote of Object.values(next.votes)) {
+  for (const [voterId, vote] of Object.entries(next.votes)) {
     if (vote !== "abstain") {
-      counts.set(vote, (counts.get(vote) ?? 0) + 1);
+      counts.set(vote, (counts.get(vote) ?? 0) + voteWeight(next, voterId));
     }
   }
 
@@ -294,8 +420,10 @@ function resolveVote(state: GameState, missingVotesAsAbstain: boolean): ReducerR
   const top = sorted[0];
   const tied = top ? sorted.filter(([, count]) => count === top[1]).length > 1 : false;
   const killed = top && !tied ? top[0] : undefined;
+  const deaths = new Set<PlayerId>();
   if (killed) {
     next.alive[killed] = false;
+    deaths.add(killed);
   }
   const voteResult = buildPublicVoteResult(next, tied, killed);
   next.publicVoteResults = [...(next.publicVoteResults ?? []), voteResult];
@@ -306,21 +434,73 @@ function resolveVote(state: GameState, missingVotesAsAbstain: boolean): ReducerR
   );
   next.publicEvents.push(voteEvent);
 
-  const winner = checkWinner(next);
-  if (winner) {
-    next.winner = winner;
-    next.phase = "ended";
-    const endEvent = event("game_ended", `${winner} win.`);
-    next.publicEvents.push(endEvent);
-    return { state: next, events: [voteEvent, endEvent] };
+  return finalizeDeaths(
+    next,
+    deaths,
+    { phase: firstNightPhase(next), incrementRound: true, resetNightActions: true },
+    [voteEvent]
+  );
+}
+
+function submitHunterShot(state: GameState, actorId: PlayerId, targetId: PlayerId | undefined): ReducerResult {
+  assertPhase(state, "hunter_revenge");
+  const reaction = state.pendingReactions[0];
+  if (reaction?.type !== "hunter_revenge" || reaction.hunterId !== actorId) {
+    throw new Error("No pending Hunter shot for this player");
+  }
+  if (state.roles[actorId] !== "hunter") {
+    throw new Error(`Player ${actorId} is not hunter`);
+  }
+  if (state.alive[actorId]) {
+    throw new Error("Hunter can only shoot after death");
   }
 
-  next.round += 1;
-  next.phase = "night_werewolves";
-  next.nightActions = { seerViews: next.nightActions.seerViews };
-  const phaseEvent = event("phase_changed", "Night falls.");
-  next.publicEvents.push(phaseEvent);
-  return { state: next, events: [voteEvent, phaseEvent] };
+  const next = cloneState(state);
+  next.pendingReactions = next.pendingReactions.slice(1);
+  const deaths = new Set<PlayerId>();
+  const events: GameEvent[] = [];
+  if (targetId) {
+    if (targetId === actorId) {
+      throw new Error("Hunter cannot shoot themselves");
+    }
+    assertLivingPlayer(state, targetId);
+    next.alive[targetId] = false;
+    deaths.add(targetId);
+    const shotEvent = event("phase_changed", "The Hunter shot one player.");
+    next.publicEvents.push(shotEvent);
+    events.push(shotEvent);
+  } else {
+    const skipEvent = event("phase_changed", "The Hunter did not shoot.");
+    next.publicEvents.push(skipEvent);
+    events.push(skipEvent);
+  }
+  return finalizeDeaths(next, deaths, reaction.resume, events);
+}
+
+function submitSheriffSuccessor(state: GameState, actorId: PlayerId, targetId: PlayerId | undefined): ReducerResult {
+  assertPhase(state, "sheriff_succession");
+  const reaction = state.pendingReactions[0];
+  if (reaction?.type !== "sheriff_succession" || reaction.fromId !== actorId) {
+    throw new Error("No pending Sheriff succession for this player");
+  }
+  if (state.alive[actorId]) {
+    throw new Error("Sheriff succession is only available after death");
+  }
+  if (targetId) {
+    assertLivingPlayer(state, targetId);
+  }
+
+  const next = cloneState(state);
+  next.pendingReactions = next.pendingReactions.slice(1);
+  if (targetId) {
+    next.sheriff.holderId = targetId;
+  } else {
+    delete next.sheriff.holderId;
+  }
+  delete next.sheriff.successionFromId;
+  const successorEvent = event("phase_changed", targetId ? "The Sheriff named a successor." : "The Sheriff did not name a successor.");
+  next.publicEvents.push(successorEvent);
+  return advanceReactionOrResume(next, reaction.resume, [successorEvent]);
 }
 
 function checkWinner(state: GameState) {
@@ -335,6 +515,72 @@ function checkWinner(state: GameState) {
     return "werewolves";
   }
   return undefined;
+}
+
+function finalizeDeaths(state: GameState, deaths: Set<PlayerId>, resume: ResumeState, events: GameEvent[]): ReducerResult {
+  const winner = checkWinner(state);
+  if (winner) {
+    state.winner = winner;
+    state.phase = "ended";
+    const endEvent = event("game_ended", `${winner} win.`);
+    state.publicEvents.push(endEvent);
+    return { state, events: [...events, endEvent] };
+  }
+
+  queueDeathReactions(state, deaths, resume);
+  return advanceReactionOrResume(state, resume, events);
+}
+
+function queueDeathReactions(state: GameState, deaths: Set<PlayerId>, resume: ResumeState): void {
+  const additions: PendingReaction[] = [];
+  for (const playerId of deaths) {
+    if (state.roles[playerId] === "hunter") {
+      additions.push({ type: "hunter_revenge", hunterId: playerId, resume });
+    }
+  }
+  if (state.sheriff.holderId && deaths.has(state.sheriff.holderId) && livingSuccessorTargets(state, state.sheriff.holderId).length > 0) {
+    additions.push({ type: "sheriff_succession", fromId: state.sheriff.holderId, resume });
+    state.sheriff.successionFromId = state.sheriff.holderId;
+  }
+  state.pendingReactions = [...state.pendingReactions, ...additions];
+}
+
+function advanceReactionOrResume(state: GameState, resume: ResumeState, events: GameEvent[]): ReducerResult {
+  const reaction = state.pendingReactions[0];
+  if (reaction) {
+    state.resumeAfterReactions = reaction.resume;
+    state.phase = reaction.type;
+    const phaseEvent = event("phase_changed", reaction.type === "hunter_revenge" ? "The Hunter takes revenge." : "Sheriff succession begins.");
+    state.publicEvents.push(phaseEvent);
+    return { state, events: [...events, phaseEvent] };
+  }
+
+  delete state.resumeAfterReactions;
+  if (resume.incrementRound) {
+    state.round += 1;
+  }
+  if (resume.resetNightActions) {
+    state.nightActions = { seerViews: state.nightActions.seerViews };
+  }
+  state.phase = resume.phase;
+  const phaseEvent = event("phase_changed", phaseMessage(resume.phase));
+  state.publicEvents.push(phaseEvent);
+  return { state, events: [...events, phaseEvent] };
+}
+
+function phaseMessage(phase: GameState["phase"]): string {
+  if (phase === "day_discussion") return "Day discussion begins.";
+  if (phase === "night_seer") return "Night falls. The Seer wakes.";
+  if (phase === "night_werewolves") return "Night falls.";
+  if (phase === "day_vote") return "Voting begins.";
+  if (phase === "sheriff_election") return "Sheriff election begins.";
+  if (phase === "hunter_revenge") return "The Hunter takes revenge.";
+  if (phase === "sheriff_succession") return "Sheriff succession begins.";
+  return "Game over.";
+}
+
+function firstNightPhase(state: GameState): GameState["phase"] {
+  return state.rules.nightOrder === "official" ? "night_seer" : "night_werewolves";
 }
 
 function legalWerewolfTargets(state: GameState): PlayerId[] {
@@ -376,6 +622,16 @@ function assertLivingPlayer(state: GameState, playerId: PlayerId): void {
   }
 }
 
+function assertKnownPlayer(state: GameState, playerId: PlayerId): void {
+  if (!state.players.some((player) => player.id === playerId)) {
+    throw new Error("Unknown player");
+  }
+}
+
+function livingSuccessorTargets(state: GameState, fromId: PlayerId): PlayerId[] {
+  return state.players.filter((player) => player.id !== fromId && state.alive[player.id]).map((player) => player.id);
+}
+
 function cloneState(state: GameState): GameState {
   const privateEvents: GameState["privateEvents"] = {};
   for (const [playerId, events] of Object.entries(state.privateEvents)) {
@@ -392,6 +648,13 @@ function cloneState(state: GameState): GameState {
     },
     votes: { ...state.votes },
     publicVoteResults: [...(state.publicVoteResults ?? [])],
+    sheriff: {
+      ...state.sheriff,
+      electionVotes: { ...(state.sheriff?.electionVotes ?? {}) }
+    },
+    pendingReactions: [...(state.pendingReactions ?? [])],
+    ...(state.resumeAfterReactions ? { resumeAfterReactions: { ...state.resumeAfterReactions } } : {}),
+    rules: { ...state.rules },
     publicEvents: [...state.publicEvents],
     privateEvents
   };
@@ -402,10 +665,11 @@ function buildPublicVoteResult(state: GameState, tied: boolean, executedPlayerId
     .filter((player) => state.votes[player.id])
     .map((player) => ({
       voterId: player.id,
-      targetId: state.votes[player.id] as PlayerId | "abstain"
+      targetId: state.votes[player.id] as PlayerId | "abstain",
+      weight: voteWeight(state, player.id)
     }));
   const tally = votes.reduce<Record<string, number>>((counts, vote) => {
-    counts[vote.targetId] = (counts[vote.targetId] ?? 0) + 1;
+    counts[vote.targetId] = (counts[vote.targetId] ?? 0) + vote.weight;
     return counts;
   }, {});
   return {
@@ -417,4 +681,8 @@ function buildPublicVoteResult(state: GameState, tied: boolean, executedPlayerId
     tied,
     createdAt: Date.now()
   };
+}
+
+function voteWeight(state: GameState, voterId: PlayerId): number {
+  return state.sheriff.holderId === voterId ? 2 : 1;
 }

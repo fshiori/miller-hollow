@@ -12,6 +12,8 @@ Date: 2026-05-15
 | `host/kick` | Allowed in lobby for non-host seats | Denied | Denied | Denied |
 | `host/transfer` | Allowed in lobby to occupied seat | Denied | Denied | Denied |
 | `host/reset-lobby` | Allowed when not playing | Denied | Denied | Denied while playing |
+| `host/advance-phase` | Allowed when playing | Denied | Denied | Allowed |
+| `host/open-sheriff-election` | Allowed during day discussion when no Sheriff is elected | Denied | Denied | Allowed only in V5 roleflow-compatible state |
 | `diagnostics` | Allowed | Denied | Denied | Allowed |
 | `observer-ticket` | Allowed | Denied | Denied | Allowed |
 | `observer-state` | Allowed | Denied | Denied | Allowed |

@@ -13,10 +13,11 @@ export type OfficialBasicPresetId =
   | "official_basic_17"
   | "official_basic_18";
 
+export type OfficialRoleflowPresetId = "official_roleflow_8";
 export type AppBasicPresetId = "app_basic_8" | "app_basic_9" | "app_basic_10" | "app_basic_11" | "app_basic_12";
 export type LegacyBasicPresetId = "basic_8" | "basic_9" | "basic_10" | "basic_11" | "basic_12";
-export type BasicPresetId = OfficialBasicPresetId | AppBasicPresetId | LegacyBasicPresetId;
-export type PresetFamily = "official_basic" | "app_basic";
+export type BasicPresetId = OfficialBasicPresetId | OfficialRoleflowPresetId | AppBasicPresetId | LegacyBasicPresetId;
+export type PresetFamily = "official_basic" | "official_roleflow" | "app_basic";
 export type RulesSource = "official_rulebook" | "miller_hollow_app";
 
 export interface RolePreset {
@@ -27,6 +28,9 @@ export interface RolePreset {
   playerCount: number;
   roles: readonly Role[];
   enabled: boolean;
+  nightOrder: "legacy" | "official";
+  werewolfTimeoutNoKill: boolean;
+  sheriffEnabled: boolean;
   aliasOf?: AppBasicPresetId;
 }
 
@@ -61,6 +65,10 @@ const appRoleCounts = {
   app_basic_12: { werewolf: 3, seer: 1, witch: 1, villager: 7 }
 } as const satisfies Record<AppBasicPresetId, Partial<Record<Role, number>>>;
 
+const officialRoleflowCounts = {
+  official_roleflow_8: { werewolf: 2, seer: 1, hunter: 1, villager: 4 }
+} as const satisfies Record<OfficialRoleflowPresetId, Partial<Record<Role, number>>>;
+
 const legacyAliases = {
   basic_8: "app_basic_8",
   basic_9: "app_basic_9",
@@ -80,10 +88,30 @@ const officialPresets = (Object.entries(officialRoleCounts) as Array<[OfficialBa
       label: `${playerCount}-player official beginner`,
       rulesSource: "official_rulebook",
       playerCount,
-      counts
+      counts,
+      nightOrder: "legacy",
+      werewolfTimeoutNoKill: false,
+      sheriffEnabled: false
     });
   }
 );
+
+const officialRoleflowPresets = (
+  Object.entries(officialRoleflowCounts) as Array<[OfficialRoleflowPresetId, Partial<Record<Role, number>>]>
+).map(([id, counts]) => {
+  const playerCount = Number(id.replace("official_roleflow_", ""));
+  return createPreset({
+    id,
+    family: "official_roleflow",
+    label: `${playerCount}-player official roleflow`,
+    rulesSource: "official_rulebook",
+    playerCount,
+    counts,
+    nightOrder: "official",
+    werewolfTimeoutNoKill: true,
+    sheriffEnabled: true
+  });
+});
 
 const appPresets = (Object.entries(appRoleCounts) as Array<[AppBasicPresetId, Partial<Record<Role, number>>]>).map(([id, counts]) => {
   const playerCount = Number(id.replace("app_basic_", ""));
@@ -93,7 +121,10 @@ const appPresets = (Object.entries(appRoleCounts) as Array<[AppBasicPresetId, Pa
     label: `${playerCount}-player app basic`,
     rulesSource: "miller_hollow_app",
     playerCount,
-    counts
+    counts,
+    nightOrder: "legacy",
+    werewolfTimeoutNoKill: false,
+    sheriffEnabled: false
   });
 });
 
@@ -108,7 +139,7 @@ const legacyPresets = (Object.entries(legacyAliases) as Array<[LegacyBasicPreset
   });
 });
 
-export const BASIC_PRESETS = Object.freeze([...officialPresets, ...appPresets, ...legacyPresets]) as readonly RolePreset[];
+export const BASIC_PRESETS = Object.freeze([...officialPresets, ...officialRoleflowPresets, ...appPresets, ...legacyPresets]) as readonly RolePreset[];
 export const v1Preset = getBasicPreset("basic_8");
 
 export function isBasicPresetId(value: unknown): value is BasicPresetId {
@@ -141,6 +172,9 @@ function createPreset(input: {
   rulesSource: RulesSource;
   playerCount: number;
   counts: Partial<Record<Role, number>>;
+  nightOrder: "legacy" | "official";
+  werewolfTimeoutNoKill: boolean;
+  sheriffEnabled: boolean;
 }): RolePreset {
   const roles = expandRoles(input.counts);
   if (roles.length !== input.playerCount) {
@@ -158,12 +192,17 @@ function createPreset(input: {
     rulesSource: input.rulesSource,
     playerCount: input.playerCount,
     roles: Object.freeze(roles),
-    enabled: true
+    enabled: true,
+    nightOrder: input.nightOrder,
+    werewolfTimeoutNoKill: input.werewolfTimeoutNoKill,
+    sheriffEnabled: input.sheriffEnabled
   });
 }
 
 function expandRoles(counts: Partial<Record<Role, number>>): Role[] {
-  return (["werewolf", "seer", "witch", "villager"] as const).flatMap((role) => Array.from({ length: counts[role] ?? 0 }, () => role));
+  return (["werewolf", "seer", "witch", "hunter", "villager"] as const).flatMap((role) =>
+    Array.from({ length: counts[role] ?? 0 }, () => role)
+  );
 }
 
 function roleSummary(roles: readonly Role[]): Array<{ role: Role; label: string; count: number }> {
@@ -171,7 +210,7 @@ function roleSummary(roles: readonly Role[]): Array<{ role: Role; label: string;
     acc[role] = (acc[role] ?? 0) + 1;
     return acc;
   }, {});
-  return (["werewolf", "seer", "witch", "villager"] as const)
+  return (["werewolf", "seer", "witch", "hunter", "villager"] as const)
     .map((role) => ({ role, label: roleDefinitions[role].displayName, count: counts[role] ?? 0 }))
     .filter((entry) => entry.count > 0);
 }

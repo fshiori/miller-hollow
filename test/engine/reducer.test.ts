@@ -56,6 +56,7 @@ describe("Miller Hollow V1 engine", () => {
       official_basic_16: { werewolf: 3, seer: 1, villager: 12 },
       official_basic_17: { werewolf: 3, seer: 1, villager: 13 },
       official_basic_18: { werewolf: 4, seer: 1, villager: 13 },
+      official_roleflow_8: { werewolf: 2, seer: 1, hunter: 1, villager: 4 },
       app_basic_8: { werewolf: 2, seer: 1, witch: 1, villager: 4 },
       app_basic_9: { werewolf: 2, seer: 1, witch: 1, villager: 5 },
       app_basic_10: { werewolf: 2, seer: 1, witch: 1, villager: 6 },
@@ -76,7 +77,7 @@ describe("Miller Hollow V1 engine", () => {
       }, {});
 
       expect(counts).toEqual(expected[preset.id as keyof typeof expected]);
-      expect(game.phase).toBe("night_werewolves");
+      expect(game.phase).toBe(preset.id === "official_roleflow_8" ? "night_seer" : "night_werewolves");
     }
   });
 
@@ -214,14 +215,14 @@ describe("Miller Hollow V1 engine", () => {
       tally: { p2: 2, abstain: 6 }
     });
     expect(game.publicVoteResults[0]?.votes).toEqual([
-      { voterId: "p1", targetId: "p2" },
-      { voterId: "p2", targetId: "abstain" },
-      { voterId: "p3", targetId: "p2" },
-      { voterId: "p4", targetId: "abstain" },
-      { voterId: "p5", targetId: "abstain" },
-      { voterId: "p6", targetId: "abstain" },
-      { voterId: "p7", targetId: "abstain" },
-      { voterId: "p8", targetId: "abstain" }
+      { voterId: "p1", targetId: "p2", weight: 1 },
+      { voterId: "p2", targetId: "abstain", weight: 1 },
+      { voterId: "p3", targetId: "p2", weight: 1 },
+      { voterId: "p4", targetId: "abstain", weight: 1 },
+      { voterId: "p5", targetId: "abstain", weight: 1 },
+      { voterId: "p6", targetId: "abstain", weight: 1 },
+      { voterId: "p7", targetId: "abstain", weight: 1 },
+      { voterId: "p8", targetId: "abstain", weight: 1 }
     ]);
     expect(toPublicView(game).voteResults).toEqual(game.publicVoteResults);
     expect(game.phase).toBe("night_werewolves");
@@ -305,5 +306,56 @@ describe("Miller Hollow V1 engine", () => {
       targetId: "p3",
       source: "timeout"
     });
+  });
+
+  it("uses official roleflow night order and no-kill Werewolf timeout", () => {
+    let game = createGame(players(8), zeroRandom, "official_roleflow_8");
+    const seer = game.players.find((player) => game.roles[player.id] === "seer")?.id as PlayerId;
+    const wolf = game.players.find((player) => game.roles[player.id] === "werewolf")?.id as PlayerId;
+    expect(game.phase).toBe("night_seer");
+    game = applyCommand(game, { type: "submit_seer_target", actorId: seer, targetId: wolf }).state;
+    expect(game.phase).toBe("night_werewolves");
+    expect(buildTimeoutCommand(game, zeroRandom)).toEqual({ type: "skip_werewolf_target", actorId: wolf });
+    game = applyCommand(game, { type: "skip_werewolf_target", actorId: wolf }).state;
+    expect(game.phase).toBe("day_discussion");
+    expect(Object.values(game.alive).every(Boolean)).toBe(true);
+  });
+
+  it("opens Sheriff election during day discussion and applies weighted day votes", () => {
+    let game = createGame(players(8), zeroRandom, "official_roleflow_8");
+    game.phase = "day_discussion";
+    game = applyCommand(game, { type: "open_sheriff_election", actorId: "p1" }).state;
+    expect(game.phase).toBe("sheriff_election");
+    game = applyCommand(game, { type: "submit_sheriff_vote", actorId: "p1", targetId: "p1" }).state;
+    game = applyCommand(game, { type: "submit_sheriff_vote", actorId: "p2", targetId: "p1" }).state;
+    game = applyCommand(game, { type: "resolve_sheriff_election", missingVotesAsAbstain: true }).state;
+    expect(game.phase).toBe("day_discussion");
+    expect(game.sheriff.holderId).toBe("p1");
+    expect(toPublicView(game).sheriff.holderId).toBe("p1");
+
+    game = applyCommand(game, { type: "advance_to_vote" }).state;
+    game = applyCommand(game, { type: "submit_vote", actorId: "p1", targetId: "p2" }).state;
+    game = applyCommand(game, { type: "submit_vote", actorId: "p3", targetId: "p2" }).state;
+    game = applyCommand(game, { type: "resolve_vote", missingVotesAsAbstain: true }).state;
+    expect(game.publicVoteResults[0]).toMatchObject({ executedPlayerId: "p2", tally: { p2: 3, abstain: 6 } });
+    expect(game.publicVoteResults[0]?.votes.find((vote) => vote.voterId === "p1")?.weight).toBe(2);
+  });
+
+  it("runs Hunter revenge before resuming after day execution", () => {
+    let game = createGame(players(8), zeroRandom, "official_roleflow_8");
+    const hunter = game.players.find((player) => game.roles[player.id] === "hunter")?.id as PlayerId;
+    const wolf = game.players.find((player) => game.roles[player.id] === "werewolf")?.id as PlayerId;
+    game.phase = "day_discussion";
+    game = applyCommand(game, { type: "advance_to_vote" }).state;
+    game = applyCommand(game, { type: "submit_vote", actorId: "p1", targetId: hunter }).state;
+    game = applyCommand(game, { type: "submit_vote", actorId: "p2", targetId: hunter }).state;
+    game = applyCommand(game, { type: "resolve_vote", missingVotesAsAbstain: true }).state;
+    expect(game.phase).toBe("hunter_revenge");
+    expect(game.alive[hunter]).toBe(false);
+    expect(toPrivatePlayerView(game, hunter).legalActions).toContain("submit_hunter_shot");
+
+    game = applyCommand(game, { type: "submit_hunter_shot", actorId: hunter, targetId: wolf }).state;
+    expect(game.alive[wolf]).toBe(false);
+    expect(game.phase).toBe("night_seer");
   });
 });

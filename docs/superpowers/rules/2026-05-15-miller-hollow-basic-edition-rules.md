@@ -4,7 +4,7 @@ Date: 2026-05-15
 
 ## Scope
 
-Basic Edition is the current V4.7 rules scope:
+Basic Edition is the current V5 rules scope:
 
 - Official beginner presets for 8-18 players.
 - `official_basic_8`: 2 Werewolves, 1 Fortune Teller, 5 Ordinary Townsfolk.
@@ -19,8 +19,10 @@ Basic Edition is the current V4.7 rules scope:
 - `official_basic_17`: 3 Werewolves, 1 Fortune Teller, 13 Ordinary Townsfolk.
 - `official_basic_18`: 4 Werewolves, 1 Fortune Teller, 13 Ordinary Townsfolk.
 - App-basic compatibility presets for 8-12 players keep the existing Witch workflow.
+- V5 roleflow preset `official_roleflow_8`: 2 Werewolves, 1 Fortune Teller, 1 Hunter, 4 Ordinary Townsfolk.
 - Legacy `basic_8` through `basic_12` ids remain accepted as app-basic aliases.
-- No Hunter, Cupid, Thief, Captain, Little Girl, or custom roles.
+- Sheriff / Captain is an elected public office in roleflow rooms, not a role card.
+- No Cupid, Thief, Little Girl, expansion roles, or custom roles.
 
 ## Lobby
 
@@ -48,6 +50,8 @@ Basic Edition is the current V4.7 rules scope:
 - Witch cannot poison themselves.
 - Official beginner presets have no Witch, so night deaths resolve after Fortune Teller action.
 - App-basic night deaths resolve after Witch action.
+- V5 roleflow nights use official-style order: Fortune Teller first, then Werewolves, then Witch if present.
+- V5 roleflow Werewolf timeout or host fast-forward without a selected target produces no Werewolf victim.
 
 ## Day
 
@@ -58,8 +62,20 @@ Basic Edition is the current V4.7 rules scope:
 - Living players vote during day vote.
 - Missing votes become abstentions on timeout.
 - Tied votes execute no one.
+- In V5 roleflow rooms, the host may open a Sheriff election during day discussion after night results are public and before day vote.
+- Living players vote for Sheriff or abstain.
+- If elected, Sheriff is public and the Sheriff's day vote counts as 2.
+- If the Sheriff dies and a legal living successor exists, the dead Sheriff chooses a successor before normal phase progression continues.
 - Live vote choices are hidden from public players and spectators while voting is active.
-- Resolved vote details are public after day vote resolution, including voter choices, abstentions, tally, tie state, and execution result.
+- Resolved vote details are public after day vote resolution, including voter choices, vote weights, weighted tally, abstentions, tie state, and execution result.
+
+## Hunter
+
+- Hunter is a village-team role in V5 roleflow rooms.
+- If Hunter dies before the game has already ended, the game enters `hunter_revenge`.
+- The dead Hunter chooses one living player to shoot.
+- A host/timeout fallback may skip the shot only to keep abandoned online rooms from blocking forever; normal player flow should treat the shot as required.
+- Winner is checked after the Hunter shot before the game resumes.
 
 ## Win Conditions
 

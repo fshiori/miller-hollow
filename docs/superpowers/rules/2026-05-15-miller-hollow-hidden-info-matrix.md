@@ -14,7 +14,11 @@ Date: 2026-05-15
 | Werewolf ready ids | Aggregate count only | Living Werewolves during Werewolf night | Aggregate count only | Yes | No |
 | Day ready ids | Yes during day discussion | Yes during day discussion | Yes during day discussion | Yes | No |
 | Live vote map during active vote | No | Own submitted state only | No | Yes | No |
-| Resolved vote result after vote resolution | Yes | Yes | Yes | Yes | Yes |
+| Sheriff election live vote map | No | Own submitted state only | No | Yes | No |
+| Current Sheriff holder | Yes | Yes | Yes | Yes | Yes |
+| Pending Hunter revenge actor | Publicly implied by phase | Hunter only can act | Publicly implied by phase | Yes | Yes if roles revealed |
+| Pending Sheriff successor actor | Publicly implied by phase | Sheriff only can act | Publicly implied by phase | Yes | Yes if roles revealed |
+| Resolved vote result after vote resolution | Yes, including weights | Yes, including weights | Yes, including weights | Yes | Yes |
 | Votes submitted count | Aggregate only | Aggregate plus own vote submitted state | Aggregate only | Yes | Yes via resolved result |
 | Reconnect token | No | Browser-held only | No | No | No |
 | Token hash | No | No | No | No | No |

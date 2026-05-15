@@ -3,7 +3,10 @@ export const gamePhases = [
   "night_seer",
   "night_witch",
   "day_discussion",
+  "sheriff_election",
   "day_vote",
+  "hunter_revenge",
+  "sheriff_succession",
   "ended"
 ] as const;
 

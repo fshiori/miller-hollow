@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 - Hunter And Sheriff Role Flow
+
+### Added
+
+- `official_roleflow_8` preset with 2 Werewolves, 1 Fortune Teller, 1 Hunter, and 4 Ordinary Townsfolk.
+- Official-style V5 night order for roleflow rooms: Fortune Teller, Werewolves, then Witch when present.
+- Hunter death reaction phase with player UI, host observer visibility, timeout fallback, and chained win checks.
+- Host-opened Sheriff election during day discussion, public Sheriff holder, weighted day vote, and Sheriff succession.
+- Public weighted vote reveal rows showing Sheriff vote weight.
+- Engine, API, browser, and remote smoke coverage for V5 roleflow.
+- V5 design and implementation documents.
+
+### Changed
+
+- App version reports `0.5.0`.
+- V5 roleflow Werewolf timeout without a selected target produces no Werewolf victim.
+
 ## 0.4.9 - Vote Reveal And Demo Flow Clarity
 
 ### Added

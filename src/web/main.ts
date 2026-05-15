@@ -19,7 +19,10 @@ type Phase =
   | "night_seer"
   | "night_witch"
   | "day_discussion"
+  | "sheriff_election"
   | "day_vote"
+  | "hunter_revenge"
+  | "sheriff_succession"
   | "ended";
 
 interface SeatView {
@@ -44,6 +47,7 @@ interface VoteResultView {
   votes: Array<{
     voterId: string;
     targetId: string;
+    weight?: number;
   }>;
   tally: Record<string, number>;
   executedPlayerId?: string;
@@ -63,7 +67,7 @@ interface RoomView {
   };
   preset?: {
     id: string;
-    family: "official_basic" | "app_basic";
+    family: "official_basic" | "official_roleflow" | "app_basic";
     label: string;
     rulesSource: "official_rulebook" | "miller_hollow_app";
     playerCount: number;
@@ -77,6 +81,10 @@ interface RoomView {
     winner?: string;
     publicEvents: { id: string; message: string }[];
     voteResults: VoteResultView[];
+    sheriff: {
+      holderId?: string;
+      electionAvailable: boolean;
+    };
     phaseStatus: {
       label: string;
       submittedCount?: number;
@@ -134,6 +142,14 @@ interface ObserverRoomView extends RoomView {
       witchPoisonTarget?: string;
     };
     seerResults: Record<string, string>;
+    sheriff?: {
+      holderId?: string;
+      electionVotes: Record<string, string>;
+      missingElectionVoterIds: string[];
+      successionFromId?: string;
+      electionCount: number;
+    };
+    pendingReactions: Array<{ type: string; hunterId?: string; fromId?: string }>;
     witch?: {
       saveAvailable: boolean;
       poisonAvailable: boolean;
@@ -239,6 +255,7 @@ function render(): void {
               <label>暱稱<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
               <label>玩家人數
                 <select name="presetId">
+                  <option value="official_roleflow_8">8 人 · 進階角色</option>
                   ${Array.from({ length: 11 }, (_, index) => {
                     const count = index + 8;
                     return `<option value="official_basic_${count}">${count} 人</option>`;
@@ -330,6 +347,7 @@ function render(): void {
               <div>
                 <h2>${escapeHtml(labelPhase(game?.phase))}</h2>
                 <p>${game ? `第 ${game.round} 輪 · ${escapeHtml(labelPhaseStatus(game.phaseStatus.label))}` : `${room?.startEligibility?.occupiedSeats ?? seats.filter((seat) => seat.nickname).length}/${requiredSeats} 人就座 · ${room?.startEligibility?.readySeats ?? 0} 人準備`}</p>
+                ${renderSheriffStatus()}
               </div>
               <div>
                 <div data-testid="phase" class="phase-chip">${escapeHtml(labelPhase(String(phase)))}</div>
@@ -428,6 +446,7 @@ function renderSpectator(): void {
               <div>
                 <h2>${escapeHtml(labelPhase(game?.phase))}</h2>
                 <p>${game ? `第 ${game.round} 輪` : `${seats.filter((seat) => seat.nickname).length}/${requiredSeats} 人就座`}</p>
+                ${renderSheriffStatus()}
               </div>
               <div>
                 <div data-testid="phase" class="phase-chip">${escapeHtml(labelPhase(String(phase)))}</div>
@@ -526,6 +545,7 @@ function renderHostObserver(): void {
               <div>
                 <h2>${escapeHtml(labelPhase(game?.phase))}</h2>
                 <p>${game ? `第 ${game.round} 輪 · 主持人可見隱藏資訊` : "等待房間開始"}</p>
+                ${renderSheriffStatus()}
               </div>
               <div>
                 <div data-testid="phase" class="phase-chip">${escapeHtml(labelPhase(String(phase)))}</div>
@@ -607,6 +627,25 @@ function renderObserverPhasePanel(observerRoom: ObserverRoomView | undefined): s
     const missing = observer.players.filter((player) => player.alive && !ready.includes(player.id));
     return `<div class="observer-grid"><section><h3>白天準備</h3><p>已準備：${ready.map(observerNameFor).map(escapeHtml).join("、") || "無"}</p><p>未準備：${missing.map((player) => escapeHtml(player.nickname)).join("、") || "無"}</p></section><section><h3>夜晚摘要</h3><p>狼人目標來源：${escapeHtml(labelWerewolfTargetSource(observer.nightActions?.werewolfTargetSource))}</p><p>${observer.nightActions?.seerSkipped ? "預言家未查驗" : "預言家已行動或無需行動"}</p></section></div>`;
   }
+  if (phase === "sheriff_election") {
+    const votes = observer.sheriff?.electionVotes ?? {};
+    return `
+      <div class="observer-grid">
+        <section>
+          <h3>警長選舉</h3>
+          <div class="observer-list">
+            ${Object.entries(votes)
+              .map(([voterId, targetId]) => `<p><strong>${escapeHtml(observerNameFor(voterId))}</strong> → ${escapeHtml(targetId === "abstain" ? "棄票" : observerNameFor(targetId))}</p>`)
+              .join("") || `<p class="muted">尚未有人投票。</p>`}
+          </div>
+        </section>
+        <section>
+          <h3>未投票</h3>
+          <p>${observer.sheriff?.missingElectionVoterIds.map(observerNameFor).map(escapeHtml).join("、") || "無"}</p>
+        </section>
+      </div>
+    `;
+  }
   if (phase === "day_vote") {
     return `
       <div class="observer-grid">
@@ -626,6 +665,14 @@ function renderObserverPhasePanel(observerRoom: ObserverRoomView | undefined): s
         </section>
       </div>
     `;
+  }
+  if (phase === "hunter_revenge") {
+    const reaction = observer.pendingReactions.find((entry) => entry.type === "hunter_revenge");
+    return `<div class="observer-grid"><section><h3>獵人反擊</h3><p>獵人：<strong>${reaction?.hunterId ? escapeHtml(observerNameFor(reaction.hunterId)) : "無"}</strong></p></section></div>`;
+  }
+  if (phase === "sheriff_succession") {
+    const fromId = observer.sheriff?.successionFromId ?? observer.pendingReactions.find((entry) => entry.type === "sheriff_succession")?.fromId;
+    return `<div class="observer-grid"><section><h3>警長移交</h3><p>原警長：<strong>${fromId ? escapeHtml(observerNameFor(fromId)) : "無"}</strong></p></section></div>`;
   }
   return `<p class="muted">遊戲結束。角色已公開。</p>`;
 }
@@ -672,6 +719,7 @@ function renderHostTools(): string {
         <button id="diagnostics-button" class="secondary" type="button">診斷資訊</button>
         <button id="lock-button" class="secondary" type="button">${room.settings.locked ? "解鎖" : "鎖定"}</button>
         <button id="spectators-button" class="secondary" type="button">${room.settings.spectatorsEnabled ? "關閉觀戰" : "開放觀戰"}</button>
+        ${room.status === "playing" && room.game?.sheriff?.electionAvailable ? `<button id="open-sheriff-election-button" class="secondary" type="button">開啟警長選舉</button>` : ""}
         ${room.status === "playing" && room.game?.phase !== "ended" ? `<button id="advance-phase-button" class="secondary" type="button">快轉階段</button>` : ""}
       </div>
       ${room.status !== "playing" ? `<button id="reset-button" type="button">重設大廳</button>` : ""}
@@ -726,9 +774,6 @@ function renderActionPanel(): string {
   if (room.game.winner) {
     return `<div class="result">${escapeHtml(labelTeam(room.game.winner))}獲勝。</div>`;
   }
-  if (!privateView.alive) {
-    return `<p class="muted">你已死亡。你可以觀看公開資訊，但不能行動。</p>`;
-  }
   if (privateView.legalActions.includes("submit_werewolf_target")) {
     return renderWerewolfPanel();
   }
@@ -751,8 +796,30 @@ function renderActionPanel(): string {
       </form>
     `;
   }
+  if (privateView.legalActions.includes("submit_sheriff_vote")) {
+    return targetForm("sheriff-vote-form", "投給警長", ["abstain", ...privateView.legalTargets], "投票");
+  }
+  if (privateView.legalActions.includes("submit_hunter_shot")) {
+    return targetForm("hunter-shot-form", "獵人反擊", privateView.legalTargets, "射擊");
+  }
+  if (privateView.legalActions.includes("submit_sheriff_successor")) {
+    return `
+      <form id="sheriff-successor-form" class="action-form">
+        <label>選擇下一任警長
+          <select name="targetId">
+            <option value="">不移交</option>
+            ${privateView.legalTargets.map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(nameFor(id))}</option>`).join("")}
+          </select>
+        </label>
+        <button type="submit">移交</button>
+      </form>
+    `;
+  }
   if (privateView.legalActions.includes("submit_vote")) {
     return targetForm("vote-form", "投票", ["abstain", ...privateView.legalTargets], "投票");
+  }
+  if (!privateView.alive) {
+    return `<p class="muted">你已死亡。你可以觀看公開資訊，但不能行動。</p>`;
   }
   if (room.game.phase === "day_discussion") {
     return renderDayReadyPanel();
@@ -841,6 +908,11 @@ function renderEndgamePanel(): string {
   `;
 }
 
+function renderSheriffStatus(): string {
+  if (!room?.game?.sheriff?.holderId) return "";
+  return `<p class="muted">警長：<strong>${escapeHtml(nameFor(room.game.sheriff.holderId))}</strong></p>`;
+}
+
 function renderVoteResultsPanel(): string {
   const results = room?.game?.voteResults ?? [];
   if (!results.length) return "";
@@ -867,7 +939,7 @@ function renderVoteResultsPanel(): string {
           ${result.votes
             .map(
               (vote) => `
-                <p><strong>${escapeHtml(nameFor(vote.voterId))}</strong> → ${escapeHtml(vote.targetId === "abstain" ? "棄票" : nameFor(vote.targetId))}</p>
+                <p><strong>${escapeHtml(nameFor(vote.voterId))}</strong> → ${escapeHtml(vote.targetId === "abstain" ? "棄票" : nameFor(vote.targetId))}${vote.weight && vote.weight > 1 ? "（警長票 x2）" : ""}</p>
               `
             )
             .join("") || `<p class="muted">沒有投票紀錄。</p>`}
@@ -901,7 +973,9 @@ function targetForm(id: string, label: string, targets: string[], button: string
     <form id="${id}" class="action-form">
       <label>${escapeHtml(label)}
         <select name="targetId" required>
-          ${targets.map((target) => `<option value="${escapeHtml(target)}">${escapeHtml(target === "abstain" ? "棄票" : nameFor(target))}</option>`).join("")}
+          ${targets
+            .map((target) => `<option value="${escapeHtml(target)}">${escapeHtml(target === "" ? "不移交" : target === "abstain" ? "棄票" : nameFor(target))}</option>`)
+            .join("")}
         </select>
       </label>
       <button type="submit">${escapeHtml(button)}</button>
@@ -964,6 +1038,9 @@ function bindRoomActions(): void {
   document.querySelector<HTMLButtonElement>("#spectators-button")?.addEventListener("click", () => {
     void hostControl(room?.settings.spectatorsEnabled ? "disable-spectators" : "enable-spectators");
   });
+  document.querySelector<HTMLButtonElement>("#open-sheriff-election-button")?.addEventListener("click", () => {
+    void hostControl("open-sheriff-election");
+  });
   document.querySelector<HTMLButtonElement>("#advance-phase-button")?.addEventListener("click", () => {
     void hostControl("advance-phase");
   });
@@ -1018,6 +1095,21 @@ function bindRoomActions(): void {
     event.preventDefault();
     const targetId = String(new FormData(event.currentTarget as HTMLFormElement).get("targetId") ?? "abstain");
     send({ type: "vote", targetId });
+  });
+  document.querySelector<HTMLFormElement>("#sheriff-vote-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const targetId = String(new FormData(event.currentTarget as HTMLFormElement).get("targetId") ?? "abstain");
+    send({ type: "sheriff_vote", targetId });
+  });
+  document.querySelector<HTMLFormElement>("#hunter-shot-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const targetId = String(new FormData(event.currentTarget as HTMLFormElement).get("targetId") ?? "");
+    send({ type: "hunter_shot", targetId });
+  });
+  document.querySelector<HTMLFormElement>("#sheriff-successor-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const targetId = String(new FormData(event.currentTarget as HTMLFormElement).get("targetId") ?? "");
+    send({ type: "sheriff_successor", targetId: targetId || undefined });
   });
   document.querySelector<HTMLFormElement>("#chat-form")?.addEventListener("submit", (event) => {
     event.preventDefault();

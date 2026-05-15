@@ -15,6 +15,10 @@ export interface PublicGameView {
   players: PublicPlayerView[];
   publicEvents: GameEvent[];
   voteResults: PublicVoteResult[];
+  sheriff: {
+    holderId?: PlayerId;
+    electionAvailable: boolean;
+  };
   phaseStatus: {
     label: string;
     submittedCount?: number;
@@ -65,6 +69,10 @@ export function toPublicView(state: GameState): PublicGameView {
     players,
     publicEvents: state.publicEvents,
     voteResults: state.publicVoteResults ?? [],
+    sheriff: {
+      ...(state.sheriff.holderId ? { holderId: state.sheriff.holderId } : {}),
+      electionAvailable: state.rules.sheriffEnabled && state.phase === "day_discussion" && !state.sheriff.holderId
+    },
     phaseStatus: publicPhaseStatus(state),
     ...(state.phase === "ended" && state.winner
       ? {
@@ -99,10 +107,23 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
   if (alive && state.phase === "day_vote") {
     legalActions.push("submit_vote");
   }
+  if (alive && state.phase === "sheriff_election") {
+    legalActions.push("submit_sheriff_vote");
+  }
+  const pendingReaction = state.pendingReactions[0];
+  if (!alive && role === "hunter" && pendingReaction?.type === "hunter_revenge" && pendingReaction.hunterId === playerId) {
+    legalActions.push("submit_hunter_shot");
+  }
+  if (!alive && pendingReaction?.type === "sheriff_succession" && pendingReaction.fromId === playerId) {
+    legalActions.push("submit_sheriff_successor");
+  }
 
   const legalTargets = state.players
-    .filter((player) => player.id !== playerId && state.alive[player.id])
+    .filter((player) => state.alive[player.id])
     .filter((player) => {
+      if (state.phase !== "sheriff_election" && player.id === playerId) {
+        return false;
+      }
       if (state.phase === "night_werewolves") {
         return role === "werewolf" && state.roles[player.id] !== "werewolf";
       }
@@ -114,6 +135,15 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
       }
       if (state.phase === "day_vote") {
         return alive;
+      }
+      if (state.phase === "sheriff_election") {
+        return alive;
+      }
+      if (state.phase === "hunter_revenge") {
+        return pendingReaction?.type === "hunter_revenge" && pendingReaction.hunterId === playerId;
+      }
+      if (state.phase === "sheriff_succession") {
+        return pendingReaction?.type === "sheriff_succession" && pendingReaction.fromId === playerId;
       }
       return false;
     })
@@ -181,6 +211,20 @@ function publicPhaseStatus(state: GameState): PublicGameView["phaseStatus"] {
       requiredCount: livingCount
     };
   }
+  if (state.phase === "sheriff_election") {
+    const livingCount = state.players.filter((player) => state.alive[player.id]).length;
+    return {
+      label: "Sheriff election",
+      submittedCount: Object.keys(state.sheriff.electionVotes).length,
+      requiredCount: livingCount
+    };
+  }
+  if (state.phase === "hunter_revenge") {
+    return { label: "Hunter revenge", submittedCount: 0, requiredCount: 1 };
+  }
+  if (state.phase === "sheriff_succession") {
+    return { label: "Sheriff succession", submittedCount: 0, requiredCount: 1 };
+  }
   return { label: state.winner ? `${state.winner} win` : "Game over" };
 }
 
@@ -191,6 +235,23 @@ function privateActionState(
   alive: boolean,
   legalActions: string[]
 ): PrivatePlayerView["actionState"] {
+  const pendingReaction = state.pendingReactions[0];
+  if (!alive && role === "hunter" && state.phase === "hunter_revenge" && pendingReaction?.type === "hunter_revenge" && pendingReaction.hunterId === playerId) {
+    return {
+      required: true,
+      submitted: false,
+      label: "Hunter shot",
+      waitingFor: "Hunter shot"
+    };
+  }
+  if (!alive && state.phase === "sheriff_succession" && pendingReaction?.type === "sheriff_succession" && pendingReaction.fromId === playerId) {
+    return {
+      required: true,
+      submitted: false,
+      label: "Choose Sheriff successor",
+      waitingFor: "Sheriff successor"
+    };
+  }
   if (!alive) {
     return {
       required: false,
@@ -228,6 +289,14 @@ function privateActionState(
       submitted: Boolean(state.votes[playerId]),
       label: "Vote",
       ...(state.votes[playerId] ? {} : { waitingFor: "Your vote" })
+    };
+  }
+  if (state.phase === "sheriff_election") {
+    return {
+      required: true,
+      submitted: Boolean(state.sheriff.electionVotes[playerId]),
+      label: "Sheriff vote",
+      ...(state.sheriff.electionVotes[playerId] ? {} : { waitingFor: "Sheriff vote" })
     };
   }
   return {

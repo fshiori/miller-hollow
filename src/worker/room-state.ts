@@ -116,6 +116,18 @@ export function normalizeRoomState(room: RoomState): RoomState {
     locked: settings.locked ?? false
   };
   room.chatMessages ??= [];
+  if (room.game) {
+    room.game.publicVoteResults ??= [];
+    room.game.sheriff ??= { electionVotes: {}, electionCount: 0 };
+    room.game.sheriff.electionVotes ??= {};
+    room.game.sheriff.electionCount ??= 0;
+    room.game.pendingReactions ??= [];
+    room.game.rules ??= {
+      nightOrder: preset.nightOrder,
+      werewolfTimeoutNoKill: preset.werewolfTimeoutNoKill,
+      sheriffEnabled: preset.sheriffEnabled
+    };
+  }
   room.phaseInteraction = normalizePhaseInteraction(room.phaseInteraction, room.game?.phase);
   room.socketTickets ??= {};
   room.spectatorTickets ??= {};

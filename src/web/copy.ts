@@ -31,7 +31,10 @@ const phaseLabels: Record<string, string> = {
   night_seer: "預言家夜晚",
   night_witch: "女巫夜晚",
   day_discussion: "白天討論",
+  sheriff_election: "警長選舉",
   day_vote: "白天投票",
+  hunter_revenge: "獵人反擊",
+  sheriff_succession: "警長移交",
   ended: "遊戲結束"
 };
 
@@ -61,6 +64,9 @@ const phaseStatusLabels: Record<string, string> = {
   "Waiting for seer": "等待預言家行動",
   "Waiting for witch": "等待女巫行動",
   "Discussion open": "討論開放中",
+  "Sheriff election": "警長選舉中",
+  "Hunter revenge": "等待獵人反擊",
+  "Sheriff succession": "等待警長移交",
   Voting: "投票中",
   "Game over": "遊戲結束"
 };
@@ -69,6 +75,10 @@ const actionStateLabels: Record<string, string> = {
   "Choose a victim": "選擇一名受害者",
   "Inspect a player": "查驗一名玩家",
   "Use or skip potions": "使用或略過藥水",
+  "Sheriff vote": "投給警長",
+  "Hunter shot": "獵人反擊",
+  "Choose Sheriff successor": "選擇下一任警長",
+  "Sheriff successor": "警長繼任者",
   Vote: "投票",
   "Werewolf target": "狼人目標"
 };
@@ -154,7 +164,17 @@ const errorLabels: Record<string, string> = {
   "Witch cannot poison themselves in V1": "女巫不能毒殺自己。",
   "No living players": "沒有存活玩家。",
   "Unknown player": "未知玩家。",
-  "Only playing games can advance phases": "只有進行中的遊戲可以快轉階段。"
+  "Only playing games can advance phases": "只有進行中的遊戲可以快轉階段。",
+  "Sheriff election is not enabled for this preset": "這個房間設定未啟用警長選舉。",
+  "Sheriff has already been elected": "警長已經選出。",
+  "Werewolves must choose a target": "狼人必須選擇目標。",
+  "No pending Hunter reaction": "目前沒有待處理的獵人反擊。",
+  "No pending Hunter shot for this player": "這名玩家沒有待處理的獵人反擊。",
+  "Hunter can only shoot after death": "獵人只能在死亡後反擊。",
+  "Hunter cannot shoot themselves": "獵人不能射擊自己。",
+  "No pending Sheriff succession": "目前沒有待處理的警長移交。",
+  "No pending Sheriff succession for this player": "這名玩家沒有待處理的警長移交。",
+  "Sheriff succession is only available after death": "警長只能在死亡後移交。"
 };
 
 export function labelRole(role: RoleId | undefined): string {
@@ -202,6 +222,7 @@ export function labelActionState(label: string | undefined): string {
 export function labelPreset(label: string | undefined, playerCount: number): string {
   if (!label) return `${playerCount} 人基本局`;
   if (label.includes("official beginner")) return `${playerCount} 人官方基本局`;
+  if (label.includes("official roleflow")) return `${playerCount} 人官方進階局`;
   if (label.includes("app basic")) return `${playerCount} 人相容基本局`;
   return label;
 }
@@ -222,9 +243,20 @@ export function localizeError(message: string | undefined): string {
 export function localizeEvent(message: string): string {
   if (message === "The game has started.") return "遊戲開始。";
   if (message === "The Seer wakes.") return "預言家醒來。";
+  if (message === "The Werewolves wake.") return "狼人醒來。";
   if (message === "The Witch wakes.") return "女巫醒來。";
   if (message === "Day discussion begins.") return "白天討論開始。";
+  if (message === "Sheriff election begins.") return "警長選舉開始。";
+  if (message === "The village elected a Sheriff.") return "村莊選出了警長。";
+  if (message === "The Sheriff election did not elect anyone.") return "這次警長選舉沒有選出警長。";
+  if (message === "The Hunter takes revenge.") return "獵人發動反擊。";
+  if (message === "The Hunter shot one player.") return "獵人射殺了一名玩家。";
+  if (message === "The Hunter did not shoot.") return "獵人沒有射擊。";
+  if (message === "Sheriff succession begins.") return "警長移交開始。";
+  if (message === "The Sheriff named a successor.") return "警長指定了繼任者。";
+  if (message === "The Sheriff did not name a successor.") return "警長沒有指定繼任者。";
   if (message === "Voting begins.") return "投票開始。";
+  if (message === "Night falls. The Seer wakes.") return "夜晚降臨，預言家醒來。";
   if (message === "Night falls.") return "夜晚降臨。";
   if (message === "No one died tonight." || message === "No one died during the night.") return "今晚無人死亡。";
   if (message === "Vote tied. No one was executed.") return "投票平手，無人被處決。";

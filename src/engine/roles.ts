@@ -75,7 +75,7 @@ export const roleDefinitions: Record<Role, RoleDefinition> = {
     id: "hunter",
     displayName: "Hunter",
     team: "village",
-    implemented: false,
+    implemented: true,
     hasDeathTrigger: true
   },
   cupid: {

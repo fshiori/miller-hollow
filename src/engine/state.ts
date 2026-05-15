@@ -37,11 +37,35 @@ export interface PublicVoteResult {
   votes: Array<{
     voterId: PlayerId;
     targetId: PlayerId | "abstain";
+    weight: number;
   }>;
   tally: Record<string, number>;
   executedPlayerId?: PlayerId;
   tied: boolean;
   createdAt: number;
+}
+
+export interface SheriffState {
+  holderId?: PlayerId;
+  electionVotes: Record<PlayerId, PlayerId | "abstain">;
+  electionCount: number;
+  successionFromId?: PlayerId;
+}
+
+export interface ResumeState {
+  phase: Phase;
+  incrementRound?: boolean;
+  resetNightActions?: boolean;
+}
+
+export type PendingReaction =
+  | { type: "hunter_revenge"; hunterId: PlayerId; resume: ResumeState }
+  | { type: "sheriff_succession"; fromId: PlayerId; resume: ResumeState };
+
+export interface GameRules {
+  nightOrder: "legacy" | "official";
+  werewolfTimeoutNoKill: boolean;
+  sheriffEnabled: boolean;
 }
 
 export interface GameState {
@@ -53,6 +77,10 @@ export interface GameState {
   nightActions: NightActions;
   votes: Record<PlayerId, PlayerId | "abstain">;
   publicVoteResults: PublicVoteResult[];
+  sheriff: SheriffState;
+  pendingReactions: PendingReaction[];
+  resumeAfterReactions?: ResumeState;
+  rules: GameRules;
   witchSaveAvailable: boolean;
   witchPoisonAvailable: boolean;
   publicEvents: GameEvent[];

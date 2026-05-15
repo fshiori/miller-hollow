@@ -10,7 +10,8 @@ May include:
 - Selected public preset id, family, rules source, label, player count, and labeled role-count summary.
 - Seat nicknames, connection status, ready state, and last seen time.
 - Public game phase, round, alive/dead status, public events, phase status.
-- Resolved vote results after day vote resolution.
+- Public Sheriff holder and Sheriff election availability.
+- Resolved vote results with vote weights after day vote resolution.
 - Phase interaction aggregates, such as Werewolf confirmation counts and day ready counts.
 - Public chat messages.
 - Start eligibility.
@@ -30,6 +31,8 @@ Must not include:
 - Werewolf proposed target id before it is committed as the actual night target.
 - Werewolf ready seat ids.
 - Live vote map during day vote.
+- Sheriff election live vote map.
+- Hidden Hunter identity before endgame, except the dead reacting Hunter is publicly implied by `hunter_revenge`.
 
 ## Private Player View
 
@@ -41,6 +44,8 @@ May include:
 - Seer results for the Seer.
 - Witch potion availability for the Witch.
 - Action state for the current player.
+- Pending Hunter shot action for the dead Hunter.
+- Pending Sheriff successor action for the dead Sheriff.
 - Werewolf private chat, proposed target, and Werewolf ready seat ids only for living Werewolves during Werewolf night.
 - Day ready seat ids and counts for living players during day discussion.
 
@@ -70,6 +75,9 @@ May include:
 - Werewolf proposed target and ready seat ids.
 - Day ready seat ids.
 - Vote map, missing voters, and vote tally during day vote.
+- Sheriff holder, election votes, missing election voters, and succession state.
+- Pending Hunter revenge state.
+- Weighted vote tally during day vote.
 - Resolved vote results.
 - Seer results and night action summary.
 - Witch potion state for app-basic rooms.

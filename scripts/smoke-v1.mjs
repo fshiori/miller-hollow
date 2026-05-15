@@ -14,6 +14,7 @@ const presetCounts = {
   official_basic_16: { players: 16, werewolf: 3, seer: 1, villager: 12 },
   official_basic_17: { players: 17, werewolf: 3, seer: 1, villager: 13 },
   official_basic_18: { players: 18, werewolf: 4, seer: 1, villager: 13 },
+  official_roleflow_8: { players: 8, werewolf: 2, seer: 1, hunter: 1, villager: 4 },
   app_basic_8: { players: 8, werewolf: 2, seer: 1, witch: 1, villager: 4 },
   app_basic_12: { players: 12, werewolf: 3, seer: 1, witch: 1, villager: 7 },
   basic_8: { players: 8, werewolf: 2, seer: 1, witch: 1, villager: 4 }
@@ -39,6 +40,9 @@ try {
   assert(health.storage === "durable_object_sqlite", "health endpoint returned unexpected storage");
   await expectHttpError("/api/rooms", 400, { presetId: "unsupported" });
   await smokeAllPresetStarts();
+  console.log("Preset smoke passed");
+  await smokeOfficialRoleflow();
+  console.log("Roleflow smoke passed");
   const room = await post("/api/rooms", { presetId: "app_basic_8" });
   const joined = [];
   const spectatorTicket = await post(`/api/rooms/${room.roomId}/spectator-ticket`);
@@ -151,6 +155,7 @@ try {
   assert(!JSON.stringify(observer).includes("playerTokenHash"), "observer state leaked token hashes");
   assert(!JSON.stringify(observer).includes("socketTickets"), "observer state leaked socket tickets");
   await expectObserverSocket(room.roomId, joined[0]);
+  console.log("Observer smoke passed");
 
   const wolfIndexes = privates.map((view, index) => (view.role === "werewolf" ? index : -1)).filter((index) => index >= 0);
   const wolfIndex = wolfIndexes[0];
@@ -231,7 +236,7 @@ try {
   assert(latestVoteResult.tally[target] === votingPlayers.length, "vote result tally did not include deliberate votes");
   const spectatorState = await spectatorStateView(room.roomId);
   assert((spectatorState.game.voteResults ?? []).length >= 1, "spectator state did not include vote results after vote resolution");
-  console.log("V4.9 smoke passed");
+  console.log("V5 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");
@@ -277,7 +282,7 @@ async function smokeAllPresetStarts() {
       token: joined[0].token
     });
     const started = await get(`/api/rooms/${room.roomId}/state`);
-    assert(started.game?.phase === "night_werewolves", `${presetId} did not start`);
+    assert(started.game?.phase === (presetId === "official_roleflow_8" ? "night_seer" : "night_werewolves"), `${presetId} did not start`);
     assert(started.preset?.id === presetId, `${presetId} public preset missing`);
     assert(!publicStateHasRoles(started), `${presetId} public state leaked roles`);
     assert(!started.game.endgameReveal, `${presetId} revealed endgame early`);
@@ -286,6 +291,57 @@ async function smokeAllPresetStarts() {
     const wolf = privates.find((view) => view.role === "werewolf");
     assert(wolf.werewolfTeammates.length === expected.werewolf - 1, `${presetId} werewolf teammates mismatch`);
   }
+}
+
+async function smokeOfficialRoleflow() {
+  const room = await post("/api/rooms", { presetId: "official_roleflow_8" });
+  const joined = [];
+  for (let index = 1; index <= 8; index += 1) {
+    joined.push(await post(`/api/rooms/${room.roomId}/join`, { nickname: `Roleflow ${index}` }));
+  }
+  for (const player of joined) {
+    await socketSend(room.roomId, player, { type: "set_ready", ready: true }, undefined);
+  }
+  await waitForEligibility(room.roomId, true);
+  await post(`/api/rooms/${room.roomId}/start`, { seatId: joined[0].seatId, token: joined[0].token });
+  let privates = await privateViews(room.roomId, joined);
+  const seerIndex = privates.findIndex((view) => view.role === "seer");
+  const wolfIndexes = privates.map((view, index) => (view.role === "werewolf" ? index : -1)).filter((index) => index >= 0);
+  const hunterIndex = privates.findIndex((view) => view.role === "hunter");
+  assert(seerIndex >= 0 && wolfIndexes.length === 2 && hunterIndex >= 0, "roleflow required roles missing");
+  assert((await get(`/api/rooms/${room.roomId}/state`)).game.phase === "night_seer", "roleflow did not start with Seer");
+
+  await socketSend(room.roomId, joined[seerIndex], { type: "night_action", targetId: privates[seerIndex].legalTargets[0] }, "night_werewolves");
+  privates = await privateViews(room.roomId, joined);
+  const wolfTarget = privates[wolfIndexes[0]].legalTargets.find((targetId) => targetId !== joined[hunterIndex].seatId);
+  assert(wolfTarget, "roleflow could not find a non-Hunter Werewolf target");
+  const sheriffIndex = joined.findIndex((player, index) => index !== hunterIndex && player.seatId !== wolfTarget);
+  assert(sheriffIndex >= 0, "roleflow could not find a living Sheriff candidate");
+  await socketSend(room.roomId, joined[wolfIndexes[0]], { type: "propose_werewolf_target", targetId: wolfTarget }, undefined);
+  for (const wolfIndex of wolfIndexes) {
+    await socketSend(room.roomId, joined[wolfIndex], { type: "set_werewolf_ready", ready: true }, wolfIndex === wolfIndexes.at(-1) ? "day_discussion" : undefined);
+  }
+
+  await post(`/api/rooms/${room.roomId}/host/open-sheriff-election`, { seatId: joined[0].seatId, token: joined[0].token });
+  await waitForPhase(room.roomId, "sheriff_election", 5_000);
+  for (const player of joined) {
+    await socketSend(room.roomId, player, { type: "sheriff_vote", targetId: joined[sheriffIndex].seatId }, undefined);
+  }
+  await waitForPhase(room.roomId, "day_discussion", 5_000);
+  let state = await get(`/api/rooms/${room.roomId}/state`);
+  assert(state.game.sheriff.holderId === joined[sheriffIndex].seatId, "roleflow Sheriff was not elected");
+
+  await post(`/api/rooms/${room.roomId}/host/advance-phase`, { seatId: joined[0].seatId, token: joined[0].token });
+  await waitForPhase(room.roomId, "day_vote", 5_000);
+  const living = await livingSessions(room.roomId, joined);
+  for (const player of living) {
+    await socketSend(room.roomId, player, { type: "vote", targetId: joined[hunterIndex].seatId }, undefined);
+  }
+  await waitForPhase(room.roomId, "hunter_revenge", 5_000);
+  await socketSend(room.roomId, joined[hunterIndex], { type: "hunter_shot", targetId: joined[wolfIndexes[0]].seatId }, undefined);
+  await waitForNotPhase(room.roomId, "hunter_revenge", 5_000);
+  state = await get(`/api/rooms/${room.roomId}/state`);
+  assert((state.game.voteResults ?? []).at(-1)?.votes.some((vote) => vote.weight === 2), "roleflow vote reveal did not include Sheriff weight");
 }
 
 async function post(path, body) {
@@ -506,7 +562,7 @@ function assertRoleCounts(privates, expected, presetId) {
     acc[view.role] = (acc[view.role] ?? 0) + 1;
     return acc;
   }, {});
-  for (const role of ["werewolf", "seer", "witch", "villager"]) {
+  for (const role of ["werewolf", "seer", "witch", "hunter", "villager"]) {
     assert((counts[role] ?? 0) === (expected[role] ?? 0), `${presetId} expected ${expected[role] ?? 0} ${role}, got ${counts[role] ?? 0}`);
   }
 }

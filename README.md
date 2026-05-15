@@ -1,6 +1,6 @@
 # Miller Hollow
 
-Basic Edition V4.9 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
+Basic Edition V5 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
 
 The player-facing browser UI is Traditional Chinese. Public API fields, internal ids, and developer diagnostics remain English for compatibility.
 
@@ -12,9 +12,9 @@ This is an unofficial fan implementation and is not affiliated with the original
 - `npm run typecheck` runs TypeScript checks.
 - `npm test` runs engine unit tests.
 - `npm run build` builds the browser assets and typechecks the Worker.
-- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, host observer access, Werewolf private chat/target readiness, day readiness, WebSocket night actions, day chat, vote resolution, and public post-resolution vote reveal.
-- `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus spectator and host-observer views through create, join, watch, reconnect, start, Werewolf private chat/target readiness, day readiness, voting, post-resolution vote reveal, Traditional Chinese UI assertions, and responsive screenshots including an 18-seat lobby.
-- `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev` and `MILLER_HOLLOW_PRESET_ID=official_basic_18`.
+- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, V5 roleflow, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, host observer access, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, day readiness, WebSocket night actions, day chat, vote resolution, and public weighted vote reveal.
+- `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus spectator and host-observer views through create, join, watch, reconnect, V5 roleflow start, Seer action, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, voting, weighted vote reveal, Traditional Chinese UI assertions, and responsive screenshots including an 18-seat lobby.
+- `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev` and `MILLER_HOLLOW_PRESET_ID=official_basic_18` or `official_roleflow_8`.
 - `npm run deploy:versioned` deploys with `MILLER_HOLLOW_BUILD_SHA` set from the current git commit.
 - `npm run deploy:dry-run` validates the Worker bundle and Cloudflare configuration without publishing.
 - `npm run secrets:check` scans tracked files for common accidentally committed secret patterns.
@@ -45,15 +45,21 @@ The app-basic compatibility presets remain available through the engine/API for 
 
 Legacy `basic_8` through `basic_12` ids remain accepted as aliases for the app-basic presets.
 
+The V5 roleflow preset is available separately while the beginner presets remain stable:
+
+- `official_roleflow_8`: 2 Werewolves, 1 Fortune Teller, 1 Hunter, 4 Ordinary Townsfolk.
+
+V5 roleflow uses the official-style night order: Fortune Teller first, then Werewolves, then Witch if a future roleflow preset includes Witch. Werewolf timeout or host fast-forward without a selected target produces no Werewolf victim for V5 roleflow rooms.
+
 Rooms use anonymous nicknames and browser-held reconnect tokens. The server stores token hashes, owns the hidden game state, and sends each browser only public room state plus that seat's private role/action view.
 
-Hosts can copy player and spectator links, lock the lobby, toggle spectator access, kick lobby seats, transfer host, inspect redacted room diagnostics, and reset non-playing rooms. Players mark ready before the host can start.
+Hosts can copy player and spectator links, lock the lobby, toggle spectator access, kick lobby seats, transfer host, inspect redacted room diagnostics, open Sheriff election during day discussion, fast-forward phases, and reset non-playing rooms. Players mark ready before the host can start.
 
 Spectators can watch from `/room/:roomId/watch` without occupying a player seat. Spectator sockets receive public room views only and never receive player private views.
 
 Hosts can open `/room/:roomId/host-watch` from the host browser session for a read-only observer view that reveals roles, Werewolf chat, proposed targets, readiness, and vote details for moderation and demos. Host observer access uses short-lived tickets and does not expose reconnect tokens or ticket hashes.
 
-Live vote maps are visible only in host observer mode while voting is active. After a day vote resolves, players and spectators receive the resolved vote result showing each voter, target, tally, tie state, and execution result.
+Live vote maps are visible only in host observer mode while voting is active. After a day vote resolves, players and spectators receive the resolved vote result showing each voter, target, vote weight, weighted tally, tie state, and execution result.
 
 Endgame views reveal winner, player roles, and the public timeline only after the game ends.
 
