@@ -125,6 +125,8 @@ try {
   await pages[0].locator("#advance-phase-button").filter({ hasText: "快轉階段" }).waitFor();
   await pages[0].locator("#advance-phase-button").click();
   await waitForAnyPagePhase(pages, "day_vote", 10_000);
+  await observerPage.locator("body").filter({ hasText: "投票明細" }).waitFor({ timeout: 10_000 });
+  assert((await spectatorPage.locator('[data-testid="vote-results"]').count()) === 0, "spectator saw vote results before resolution");
 
   for (const page of pages) {
     if (await page.locator("#vote-form").isVisible().catch(() => false)) {
@@ -133,10 +135,12 @@ try {
     }
   }
   await waitForAnyPageNotPhase(pages, "day_vote", 10_000);
+  await pages[0].locator('[data-testid="vote-results"]').filter({ hasText: "投票結果" }).waitFor({ timeout: 10_000 });
+  await spectatorPage.locator('[data-testid="vote-results"]').filter({ hasText: "投票結果" }).waitFor({ timeout: 10_000 });
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V4.8 smoke passed");
+  console.log("Browser V4.9 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {

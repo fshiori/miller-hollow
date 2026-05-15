@@ -4,7 +4,7 @@ import type { RandomSource } from "./random";
 import { shuffleWithRandom } from "./random";
 import { teamForRole } from "./roles";
 import type { Role } from "./roles";
-import type { GameEvent, GamePlayer, GameState, PlayerId, ReducerResult } from "./state";
+import type { GameEvent, GamePlayer, GameState, PlayerId, PublicVoteResult, ReducerResult } from "./state";
 
 let eventCounter = 0;
 
@@ -46,6 +46,7 @@ export function createGame(players: GamePlayer[], random: RandomSource, presetIn
     alive,
     nightActions: { seerViews: {} },
     votes: {},
+    publicVoteResults: [],
     witchSaveAvailable: true,
     witchPoisonAvailable: true,
     publicEvents: [startEvent],
@@ -60,7 +61,7 @@ export function applyCommand(state: GameState, command: GameCommand): ReducerRes
 
   switch (command.type) {
     case "submit_werewolf_target":
-      return submitWerewolfTarget(state, command.actorId, command.targetId);
+      return submitWerewolfTarget(state, command.actorId, command.targetId, command.source ?? "direct");
     case "submit_seer_target":
       return submitSeerTarget(state, command.actorId, command.targetId);
     case "submit_witch_action":
@@ -84,7 +85,8 @@ export function buildTimeoutCommand(state: GameState, random: RandomSource): Gam
     return {
       type: "submit_werewolf_target",
       actorId: werewolf,
-      targetId: targets[random.nextInt(targets.length)] as PlayerId
+      targetId: targets[random.nextInt(targets.length)] as PlayerId,
+      source: "timeout"
     };
   }
 
@@ -111,7 +113,12 @@ export function buildTimeoutCommand(state: GameState, random: RandomSource): Gam
   throw new Error(`No timeout command for phase ${state.phase}`);
 }
 
-function submitWerewolfTarget(state: GameState, actorId: PlayerId, targetId: PlayerId): ReducerResult {
+function submitWerewolfTarget(
+  state: GameState,
+  actorId: PlayerId,
+  targetId: PlayerId,
+  source: "direct" | "proposal" | "timeout"
+): ReducerResult {
   assertPhase(state, "night_werewolves");
   assertLivingRole(state, actorId, "werewolf");
   if (!legalWerewolfTargets(state).includes(targetId)) {
@@ -120,6 +127,7 @@ function submitWerewolfTarget(state: GameState, actorId: PlayerId, targetId: Pla
 
   const next = cloneState(state);
   next.nightActions.werewolfTarget = targetId;
+  next.nightActions.werewolfTargetSource = source;
   next.phase = "night_seer";
   const phaseEvent = event("phase_changed", "The Seer wakes.");
   next.publicEvents.push(phaseEvent);
@@ -139,6 +147,7 @@ function submitSeerTarget(state: GameState, actorId: PlayerId, targetId: PlayerI
 
   const next = cloneState(state);
   const events: GameEvent[] = [];
+  next.nightActions.seerSkipped = !targetId;
   if (targetId) {
     assertLivingPlayer(state, targetId);
     const seenRole = state.roles[targetId];
@@ -288,6 +297,8 @@ function resolveVote(state: GameState, missingVotesAsAbstain: boolean): ReducerR
   if (killed) {
     next.alive[killed] = false;
   }
+  const voteResult = buildPublicVoteResult(next, tied, killed);
+  next.publicVoteResults = [...(next.publicVoteResults ?? []), voteResult];
 
   const voteEvent = event(
     "day_vote_resolved",
@@ -380,7 +391,30 @@ function cloneState(state: GameState): GameState {
       seerViews: { ...state.nightActions.seerViews }
     },
     votes: { ...state.votes },
+    publicVoteResults: [...(state.publicVoteResults ?? [])],
     publicEvents: [...state.publicEvents],
     privateEvents
+  };
+}
+
+function buildPublicVoteResult(state: GameState, tied: boolean, executedPlayerId: PlayerId | undefined): PublicVoteResult {
+  const votes = state.players
+    .filter((player) => state.votes[player.id])
+    .map((player) => ({
+      voterId: player.id,
+      targetId: state.votes[player.id] as PlayerId | "abstain"
+    }));
+  const tally = votes.reduce<Record<string, number>>((counts, vote) => {
+    counts[vote.targetId] = (counts[vote.targetId] ?? 0) + 1;
+    return counts;
+  }, {});
+  return {
+    id: `vote-${state.round}-${state.publicVoteResults?.length ?? 0}`,
+    round: state.round,
+    votes,
+    tally,
+    ...(executedPlayerId ? { executedPlayerId } : {}),
+    tied,
+    createdAt: Date.now()
   };
 }

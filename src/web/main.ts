@@ -38,6 +38,19 @@ interface PublicPlayerView {
   role?: string;
 }
 
+interface VoteResultView {
+  id: string;
+  round: number;
+  votes: Array<{
+    voterId: string;
+    targetId: string;
+  }>;
+  tally: Record<string, number>;
+  executedPlayerId?: string;
+  tied: boolean;
+  createdAt: number;
+}
+
 interface RoomView {
   roomId: string;
   status: "lobby" | "playing" | "ended";
@@ -63,6 +76,7 @@ interface RoomView {
     players: PublicPlayerView[];
     winner?: string;
     publicEvents: { id: string; message: string }[];
+    voteResults: VoteResultView[];
     phaseStatus: {
       label: string;
       submittedCount?: number;
@@ -114,6 +128,8 @@ interface ObserverRoomView extends RoomView {
     };
     nightActions?: {
       werewolfTarget?: string;
+      werewolfTargetSource?: "direct" | "proposal" | "timeout";
+      seerSkipped?: boolean;
       witchSavedTarget?: string;
       witchPoisonTarget?: string;
     };
@@ -323,6 +339,7 @@ function render(): void {
             ${renderActionPanel()}
           </section>
           ${renderEndgamePanel()}
+          ${renderVoteResultsPanel()}
 
           <section class="panel">
             <div class="panel-heading">
@@ -418,6 +435,7 @@ function renderSpectator(): void {
               </div>
             </div>
           </section>
+          ${renderVoteResultsPanel()}
           <section class="panel">
             <h2>白天聊天</h2>
             <div class="chat-log">
@@ -516,6 +534,7 @@ function renderHostObserver(): void {
             </div>
             ${renderObserverPhasePanel(observerRoom)}
           </section>
+          ${renderVoteResultsPanel()}
           <section class="panel">
             <div class="panel-heading">
               <h2>白天聊天</h2>
@@ -578,15 +597,15 @@ function renderObserverPhasePanel(observerRoom: ObserverRoomView | undefined): s
   }
   if (phase === "night_seer") {
     const seer = observer.players.find((player) => player.role === "seer" && player.alive);
-    return `<div class="observer-grid"><section><h3>預言家夜晚</h3><p>預言家：<strong>${seer ? escapeHtml(seer.nickname) : "無存活預言家"}</strong></p><p>查驗紀錄：${Object.entries(observer.seerResults).map(([id, role]) => `${observerNameFor(id)} ${labelRole(role)}`).map(escapeHtml).join("、") || "尚無"}</p></section></div>`;
+    return `<div class="observer-grid"><section><h3>預言家夜晚</h3><p>預言家：<strong>${seer ? escapeHtml(seer.nickname) : "無存活預言家"}</strong></p><p>查驗狀態：${observer.nightActions?.seerSkipped ? "預言家未查驗" : "等待查驗"}</p><p>查驗紀錄：${Object.entries(observer.seerResults).map(([id, role]) => `${observerNameFor(id)} ${labelRole(role)}`).map(escapeHtml).join("、") || "尚無"}</p></section></div>`;
   }
   if (phase === "night_witch") {
-    return `<div class="observer-grid"><section><h3>女巫夜晚</h3><p>狼人目標：<strong>${observer.nightActions?.werewolfTarget ? escapeHtml(observerNameFor(observer.nightActions.werewolfTarget)) : "無"}</strong></p><p>解藥：${observer.witch?.saveAvailable ? "可用" : "已用"} · 毒藥：${observer.witch?.poisonAvailable ? "可用" : "已用"}</p></section></div>`;
+    return `<div class="observer-grid"><section><h3>女巫夜晚</h3><p>狼人目標：<strong>${observer.nightActions?.werewolfTarget ? escapeHtml(observerNameFor(observer.nightActions.werewolfTarget)) : "無"}</strong></p><p>狼人目標來源：${escapeHtml(labelWerewolfTargetSource(observer.nightActions?.werewolfTargetSource))}</p><p>預言家狀態：${observer.nightActions?.seerSkipped ? "預言家未查驗" : "已處理"}</p><p>解藥：${observer.witch?.saveAvailable ? "可用" : "已用"} · 毒藥：${observer.witch?.poisonAvailable ? "可用" : "已用"}</p></section></div>`;
   }
   if (phase === "day_discussion") {
     const ready = observer.phaseInteraction.dayReadySeatIds;
     const missing = observer.players.filter((player) => player.alive && !ready.includes(player.id));
-    return `<div class="observer-grid"><section><h3>白天準備</h3><p>已準備：${ready.map(observerNameFor).map(escapeHtml).join("、") || "無"}</p><p>未準備：${missing.map((player) => escapeHtml(player.nickname)).join("、") || "無"}</p></section></div>`;
+    return `<div class="observer-grid"><section><h3>白天準備</h3><p>已準備：${ready.map(observerNameFor).map(escapeHtml).join("、") || "無"}</p><p>未準備：${missing.map((player) => escapeHtml(player.nickname)).join("、") || "無"}</p></section><section><h3>夜晚摘要</h3><p>狼人目標來源：${escapeHtml(labelWerewolfTargetSource(observer.nightActions?.werewolfTargetSource))}</p><p>${observer.nightActions?.seerSkipped ? "預言家未查驗" : "預言家已行動或無需行動"}</p></section></div>`;
   }
   if (phase === "day_vote") {
     return `
@@ -822,12 +841,59 @@ function renderEndgamePanel(): string {
   `;
 }
 
+function renderVoteResultsPanel(): string {
+  const results = room?.game?.voteResults ?? [];
+  if (!results.length) return "";
+  const result = results[results.length - 1];
+  if (!result) return "";
+  const tallyRows = Object.entries(result.tally)
+    .sort((a, b) => b[1] - a[1])
+    .map(([targetId, count]) => `${targetId === "abstain" ? "棄票" : nameFor(targetId)} ${count}`)
+    .map(escapeHtml)
+    .join("、");
+  const outcome = result.executedPlayerId
+    ? `處決：${nameFor(result.executedPlayerId)}`
+    : result.tied
+      ? "平票，無人被處決"
+      : "無人被處決";
+  return `
+    <section class="panel vote-results-panel" data-testid="vote-results">
+      <div class="panel-heading">
+        <h2>投票結果</h2>
+        <span>第 ${escapeHtml(String(result.round))} 輪</span>
+      </div>
+      <div class="vote-result-grid">
+        <div class="vote-result-list">
+          ${result.votes
+            .map(
+              (vote) => `
+                <p><strong>${escapeHtml(nameFor(vote.voterId))}</strong> → ${escapeHtml(vote.targetId === "abstain" ? "棄票" : nameFor(vote.targetId))}</p>
+              `
+            )
+            .join("") || `<p class="muted">沒有投票紀錄。</p>`}
+        </div>
+        <div class="vote-result-summary">
+          <p>票數：${tallyRows || "無"}</p>
+          <p><strong>${escapeHtml(outcome)}</strong></p>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function actionStateLabel(view: PrivateView): string {
   if (view.actionState.submitted) return "已提交。";
   if (view.actionState.waitingFor) return `等待${labelActionState(view.actionState.waitingFor)}。`;
   if (view.actionState.cannotActReason) return localizeError(view.actionState.cannotActReason);
   if (view.actionState.label) return labelActionState(view.actionState.label);
   return "目前不需要行動。";
+}
+
+function labelWerewolfTargetSource(source: "direct" | "proposal" | "timeout" | undefined): string {
+  if (source === "proposal") return "狼人提議";
+  if (source === "timeout") return "逾時自動選擇";
+  if (source === "direct") return "直接送出";
+  return "尚未決定";
 }
 
 function targetForm(id: string, label: string, targets: string[], button: string): string {

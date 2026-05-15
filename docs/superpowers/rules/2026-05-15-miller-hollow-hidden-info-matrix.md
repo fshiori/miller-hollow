@@ -13,8 +13,9 @@ Date: 2026-05-15
 | Werewolf private chat | No | Living Werewolves during Werewolf night | No | Yes | No |
 | Werewolf ready ids | Aggregate count only | Living Werewolves during Werewolf night | Aggregate count only | Yes | No |
 | Day ready ids | Yes during day discussion | Yes during day discussion | Yes during day discussion | Yes | No |
-| Vote map | No | Own submitted state only | No | Yes | No unless replayed later |
-| Votes submitted count | Aggregate only | Aggregate plus own vote submitted state | Aggregate only | Yes | Yes via replay |
+| Live vote map during active vote | No | Own submitted state only | No | Yes | No |
+| Resolved vote result after vote resolution | Yes | Yes | Yes | Yes | Yes |
+| Votes submitted count | Aggregate only | Aggregate plus own vote submitted state | Aggregate only | Yes | Yes via resolved result |
 | Reconnect token | No | Browser-held only | No | No | No |
 | Token hash | No | No | No | No | No |
 | Socket ticket | No | Short-lived transport only | Short-lived transport only | No | No |

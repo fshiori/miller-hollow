@@ -1,7 +1,7 @@
 import type { PlayerId } from "./state";
 
 export type GameCommand =
-  | { type: "submit_werewolf_target"; actorId: PlayerId; targetId: PlayerId }
+  | { type: "submit_werewolf_target"; actorId: PlayerId; targetId: PlayerId; source?: "direct" | "proposal" | "timeout" }
   | { type: "submit_seer_target"; actorId: PlayerId; targetId?: PlayerId }
   | {
       type: "submit_witch_action";

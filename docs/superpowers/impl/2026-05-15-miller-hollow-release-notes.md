@@ -384,8 +384,6 @@ Deployment:
 - Deployed at: `2026-05-15T09:18:25Z`
 - Note: deploy is from the current working tree; code is not pushed.
 
-## Planned Next Versions
-
 ## 0.4.8 - V4.8 Host Observer Mode
 
 Status:
@@ -425,6 +423,42 @@ Deployment:
 - Runtime build sha: `local`
 - Worker Version ID: `a46cfbde-cc7b-4131-a52a-e6a46b6e0930`
 - Deployed at: `2026-05-15T11:03:32Z`
+- Note: deploy is from the current working tree; code is not pushed.
+
+## 0.4.9 - V4.9 Vote Reveal And Demo Flow Clarity
+
+Status:
+
+- Deployed.
+
+Completed:
+
+- Added resolved day vote results to engine state and public game views.
+- Added `投票結果` UI for players, spectators, and host observer after vote resolution.
+- Kept live vote maps hidden from public and spectator views while voting is active.
+- Kept host observer live vote visibility during voting.
+- Added host observer clarity for Werewolf target source and skipped Seer inspection.
+- Updated API and browser smoke coverage for vote reveal and live-vote hidden-info boundaries.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_8 npm run smoke:remote:quick`
+- `MILLER_HOLLOW_BASE_URL=https://miller-hollow.fshiori.workers.dev MILLER_HOLLOW_PRESET_ID=official_basic_18 npm run smoke:remote:full`
+
+Deployment:
+
+- URL: `https://miller-hollow.fshiori.workers.dev`
+- App version: `0.4.9`
+- Runtime build sha: `local`
+- Worker Version ID: `91797fbb-9146-41eb-8fdf-a40f2c99f8b6`
+- Deployed at: `2026-05-15T11:55:00Z`
 - Note: deploy is from the current working tree; code is not pushed.
 
 ## Planned Next Versions

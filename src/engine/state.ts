@@ -10,7 +10,9 @@ export interface GamePlayer {
 
 export interface NightActions {
   werewolfTarget?: PlayerId;
+  werewolfTargetSource?: "direct" | "proposal" | "timeout";
   seerViews: Record<PlayerId, Role>;
+  seerSkipped?: boolean;
   witchSavedTarget?: PlayerId;
   witchPoisonTarget?: PlayerId;
 }
@@ -29,6 +31,19 @@ export interface GameEvent {
   message: string;
 }
 
+export interface PublicVoteResult {
+  id: string;
+  round: number;
+  votes: Array<{
+    voterId: PlayerId;
+    targetId: PlayerId | "abstain";
+  }>;
+  tally: Record<string, number>;
+  executedPlayerId?: PlayerId;
+  tied: boolean;
+  createdAt: number;
+}
+
 export interface GameState {
   phase: Phase;
   round: number;
@@ -37,6 +52,7 @@ export interface GameState {
   alive: Record<PlayerId, boolean>;
   nightActions: NightActions;
   votes: Record<PlayerId, PlayerId | "abstain">;
+  publicVoteResults: PublicVoteResult[];
   witchSaveAvailable: boolean;
   witchPoisonAvailable: boolean;
   publicEvents: GameEvent[];

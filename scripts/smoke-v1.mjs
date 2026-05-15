@@ -214,13 +214,24 @@ try {
   await socketSend(room.roomId, votingPlayers[0], { type: "vote", targetId: target }, undefined);
   observer = await observerState(room.roomId, joined[0]);
   assert(Object.keys(observer.observer?.votes ?? {}).length >= 1, "observer state did not include vote map");
-  assert(!JSON.stringify(await get(`/api/rooms/${room.roomId}/state`)).includes('"votes"'), "public state leaked vote map");
+  publicState = await get(`/api/rooms/${room.roomId}/state`);
+  assert(!JSON.stringify(publicState).includes('"votes"'), "public state leaked vote map");
+  assert((publicState.game.voteResults ?? []).length === 0, "public state revealed vote results before vote resolution");
   for (const player of votingPlayers.slice(1)) {
     await socketSend(room.roomId, player, { type: "vote", targetId: target }, undefined);
   }
   await waitForNotPhase(room.roomId, "day_vote", 5_000);
-  assert(!publicStateHasRoles(await get(`/api/rooms/${room.roomId}/state`)), "public state leaked roles after non-end vote");
-  console.log("V4.8 smoke passed");
+  publicState = await get(`/api/rooms/${room.roomId}/state`);
+  assert(!publicStateHasRoles(publicState), "public state leaked roles after non-end vote");
+  const voteResults = publicState.game.voteResults ?? [];
+  assert(voteResults.length >= 1, "public state did not include vote results after vote resolution");
+  const latestVoteResult = voteResults.at(-1);
+  assert(latestVoteResult.votes.length === votingPlayers.length, "vote result did not include each living voter");
+  assert(latestVoteResult.executedPlayerId === target, "vote result did not include executed player");
+  assert(latestVoteResult.tally[target] === votingPlayers.length, "vote result tally did not include deliberate votes");
+  const spectatorState = await spectatorStateView(room.roomId);
+  assert((spectatorState.game.voteResults ?? []).length >= 1, "spectator state did not include vote results after vote resolution");
+  console.log("V4.9 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");
@@ -402,6 +413,12 @@ async function expectSpectatorPublicOnly(roomId, forbiddenText) {
     });
     socket.addEventListener("error", reject);
   });
+}
+
+async function spectatorStateView(roomId) {
+  const ticket = await post(`/api/rooms/${roomId}/spectator-ticket`, {});
+  assert(ticket.ticket, "spectator ticket missing");
+  return get(`/api/rooms/${roomId}/state`);
 }
 
 async function observerState(roomId, player) {

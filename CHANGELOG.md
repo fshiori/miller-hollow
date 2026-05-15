@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.9 - Vote Reveal And Demo Flow Clarity
+
+### Added
+
+- Public post-resolution vote results with voter rows, tally, tie state, and execution result.
+- Player, spectator, and host observer UI panel for `投票結果`.
+- Host observer clarity for Werewolf target source and skipped Seer inspection state.
+- Engine tests for vote result execution, ties, and abstentions.
+- Smoke assertions that public/spectator views see resolved vote results but not live vote maps.
+- V4.9 design and implementation documents.
+
+### Changed
+
+- App version reports `0.4.9`.
+- API and browser smoke logs now identify V4.9.
+
 ## 0.4.8 - Host Observer Mode
 
 ### Added

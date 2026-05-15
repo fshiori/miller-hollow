@@ -10,6 +10,7 @@ May include:
 - Selected public preset id, family, rules source, label, player count, and labeled role-count summary.
 - Seat nicknames, connection status, ready state, and last seen time.
 - Public game phase, round, alive/dead status, public events, phase status.
+- Resolved vote results after day vote resolution.
 - Phase interaction aggregates, such as Werewolf confirmation counts and day ready counts.
 - Public chat messages.
 - Start eligibility.
@@ -28,6 +29,7 @@ Must not include:
 - Werewolf private chat messages.
 - Werewolf proposed target id before it is committed as the actual night target.
 - Werewolf ready seat ids.
+- Live vote map during day vote.
 
 ## Private Player View
 
@@ -68,6 +70,7 @@ May include:
 - Werewolf proposed target and ready seat ids.
 - Day ready seat ids.
 - Vote map, missing voters, and vote tally during day vote.
+- Resolved vote results.
 - Seer results and night action summary.
 - Witch potion state for app-basic rooms.
 

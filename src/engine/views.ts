@@ -1,6 +1,6 @@
 import type { Phase } from "./phases";
 import type { Role, Team } from "./roles";
-import type { GameEvent, GameState, PlayerId } from "./state";
+import type { GameEvent, GameState, PlayerId, PublicVoteResult } from "./state";
 
 export interface PublicPlayerView {
   id: PlayerId;
@@ -14,6 +14,7 @@ export interface PublicGameView {
   round: number;
   players: PublicPlayerView[];
   publicEvents: GameEvent[];
+  voteResults: PublicVoteResult[];
   phaseStatus: {
     label: string;
     submittedCount?: number;
@@ -63,6 +64,7 @@ export function toPublicView(state: GameState): PublicGameView {
     round: state.round,
     players,
     publicEvents: state.publicEvents,
+    voteResults: state.publicVoteResults ?? [],
     phaseStatus: publicPhaseStatus(state),
     ...(state.phase === "ended" && state.winner
       ? {

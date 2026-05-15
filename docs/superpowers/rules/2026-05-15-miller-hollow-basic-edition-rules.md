@@ -58,6 +58,8 @@ Basic Edition is the current V4.7 rules scope:
 - Living players vote during day vote.
 - Missing votes become abstentions on timeout.
 - Tied votes execute no one.
+- Live vote choices are hidden from public players and spectators while voting is active.
+- Resolved vote details are public after day vote resolution, including voter choices, abstentions, tally, tie state, and execution result.
 
 ## Win Conditions
 

@@ -206,6 +206,24 @@ describe("Miller Hollow V1 engine", () => {
 
     expect(game.alive.p2).toBe(false);
     expect(game.votes.p4).toBe("abstain");
+    expect(game.publicVoteResults).toHaveLength(1);
+    expect(game.publicVoteResults[0]).toMatchObject({
+      round: 1,
+      executedPlayerId: "p2",
+      tied: false,
+      tally: { p2: 2, abstain: 6 }
+    });
+    expect(game.publicVoteResults[0]?.votes).toEqual([
+      { voterId: "p1", targetId: "p2" },
+      { voterId: "p2", targetId: "abstain" },
+      { voterId: "p3", targetId: "p2" },
+      { voterId: "p4", targetId: "abstain" },
+      { voterId: "p5", targetId: "abstain" },
+      { voterId: "p6", targetId: "abstain" },
+      { voterId: "p7", targetId: "abstain" },
+      { voterId: "p8", targetId: "abstain" }
+    ]);
+    expect(toPublicView(game).voteResults).toEqual(game.publicVoteResults);
     expect(game.phase).toBe("night_werewolves");
   });
 
@@ -219,6 +237,12 @@ describe("Miller Hollow V1 engine", () => {
 
     expect(game.alive.p3).toBe(true);
     expect(game.alive.p4).toBe(true);
+    expect(game.publicVoteResults[0]).toMatchObject({
+      round: 1,
+      tied: true,
+      tally: { p3: 1, p4: 1, abstain: 6 }
+    });
+    expect(game.publicVoteResults[0]?.executedPlayerId).toBeUndefined();
     expect(game.phase).toBe("night_werewolves");
   });
 
@@ -278,7 +302,8 @@ describe("Miller Hollow V1 engine", () => {
     expect(buildTimeoutCommand(game, zeroRandom)).toEqual({
       type: "submit_werewolf_target",
       actorId: "p1",
-      targetId: "p3"
+      targetId: "p3",
+      source: "timeout"
     });
   });
 });

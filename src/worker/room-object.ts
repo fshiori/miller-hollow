@@ -784,7 +784,7 @@ export class RoomObject implements DurableObject {
     if (message.type === "night_action") {
       if (game.phase === "night_werewolves") {
         if (!message.targetId) throw new Error("Target is required");
-        return { type: "submit_werewolf_target", actorId: seatId, targetId: message.targetId };
+        return { type: "submit_werewolf_target", actorId: seatId, targetId: message.targetId, source: "direct" };
       }
       if (game.phase === "night_seer") {
         return { type: "submit_seer_target", actorId: seatId, ...(message.targetId ? { targetId: message.targetId } : {}) };
@@ -1013,7 +1013,7 @@ export class RoomObject implements DurableObject {
       const actorId = this.livingWerewolves(room)[0];
       const targetId = room.phaseInteraction.werewolfTargetId;
       if (actorId && targetId && this.isLegalWerewolfTarget(room, targetId)) {
-        return { type: "submit_werewolf_target", actorId, targetId };
+        return { type: "submit_werewolf_target", actorId, targetId, source: "proposal" };
       }
     }
     return buildTimeoutCommand(room.game, mathRandomSource);
@@ -1032,7 +1032,7 @@ export class RoomObject implements DurableObject {
     if (!livingWerewolves.every((playerId) => ready.has(playerId))) {
       return false;
     }
-    room.game = applyCommand(room.game, { type: "submit_werewolf_target", actorId: livingWerewolves[0] as string, targetId }).state;
+    room.game = applyCommand(room.game, { type: "submit_werewolf_target", actorId: livingWerewolves[0] as string, targetId, source: "proposal" }).state;
     this.logRoomEvent(room, "werewolf_target_confirmed", { targetId, readyCount: livingWerewolves.length });
     return true;
   }
@@ -1308,6 +1308,8 @@ export class RoomObject implements DurableObject {
         nightActions: game
           ? {
               werewolfTarget: game.nightActions.werewolfTarget,
+              werewolfTargetSource: game.nightActions.werewolfTargetSource,
+              seerSkipped: game.nightActions.seerSkipped,
               witchSavedTarget: game.nightActions.witchSavedTarget,
               witchPoisonTarget: game.nightActions.witchPoisonTarget
             }
