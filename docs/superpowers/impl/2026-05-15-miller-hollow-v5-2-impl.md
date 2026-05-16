@@ -22,13 +22,7 @@ Work:
 
 - Add role id `thief`.
 - Add phase id `thief_choice`.
-- Add setup state for spare role cards:
-
-```ts
-thiefSetup?: {
-  spareRoles: Role[];
-};
-```
+- Do not store manual setup state for spare role cards; spare cards are derived at deal time.
 
 - Add game state for pending and resolved Thief choice:
 
@@ -43,7 +37,8 @@ thief?: {
 Acceptance:
 
 - Custom setup accepts Thief 0 or 1.
-- If Thief is enabled, exactly two spare roles are required.
+- If Thief is enabled, no manual spare roles are accepted in the UI.
+- The game derives the two spare cards by adding two extra Ordinary Townsfolk cards before shuffle and leaving two cards undealt.
 - Room normalization backfills missing Thief state safely for old rooms.
 
 ## Phase 2: Role Assignment
@@ -55,17 +50,20 @@ Target files:
 
 Work:
 
-- Assign exactly `playerCount` dealt roles to players.
-- Keep spare roles outside the dealt role list.
+- Build the Thief deck from the configured roles plus two extra Ordinary Townsfolk cards.
+- Shuffle the full deck.
+- Assign exactly `playerCount` cards to players.
+- Keep the two undealt cards as spare roles.
 - If a player receives Thief, start the game in `thief_choice`.
 - If no Thief is dealt, start in the normal first night phase.
-- Decide and document forced-Werewolf spare behavior before implementation.
+- If both spare roles are Werewolves, restrict the legal Thief choice to Werewolf.
 
 Acceptance:
 
 - Dealt role count equals player count.
-- Spare roles are not assigned to any player before Thief chooses.
-- Thief room starts in `thief_choice`.
+- Spare roles are the two undealt cards after shuffle.
+- Thief room starts in `thief_choice` only if Thief was dealt.
+- Both-Werewolf spare cards force Thief to become Werewolf.
 
 ## Phase 3: Commands And Reducer
 
@@ -128,7 +126,8 @@ Target files:
 
 Work:
 
-- Add custom setup controls for Thief and two spare role selectors.
+- Add custom setup controls for Thief.
+- Add explanatory copy that spare cards are derived from two extra Ordinary Townsfolk cards after shuffle.
 - Add `盜賊選擇` phase label.
 - Add Thief choice action panel.
 - Add host observer Thief panel.
@@ -163,4 +162,4 @@ Work:
 
 ## Completion Definition
 
-V5.2 is done when Thief can choose from two pre-room configured spare roles before first night, the selected role becomes the player's effective role, spare-card hidden information is protected, and full local plus remote verification pass.
+V5.2 is done when Thief can choose from the two undealt spare roles before first night, the selected role becomes the player's effective role, double-Werewolf spare cards force a Werewolf choice, spare-card hidden information is protected, and full local plus remote verification pass.

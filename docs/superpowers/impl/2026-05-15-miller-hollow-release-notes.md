@@ -540,7 +540,8 @@ Completed:
 
 - Added implemented `thief` role.
 - Added `thief_choice` opening phase.
-- Added custom setup validation for exactly two spare roles when Thief is enabled.
+- Added Thief spare cards derived from the undealt cards after adding two extra Ordinary Townsfolk cards.
+- Added forced Werewolf choice when both Thief spare cards are Werewolves.
 - Added Thief command, reducer flow, timeout fallback, private view, UI action form, and host observer state.
 - Added engine test coverage for Thief choice before first night.
 

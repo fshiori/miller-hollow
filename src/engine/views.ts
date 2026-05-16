@@ -175,7 +175,7 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
     seerResults: role === "seer" ? state.nightActions.seerViews : {},
     legalTargets,
     ...(role === "thief" && state.phase === "thief_choice" && state.thief?.playerId === playerId
-      ? { legalRoleChoices: state.thief.spareRoles }
+      ? { legalRoleChoices: legalThiefChoices(state.thief.spareRoles) }
       : {}),
     ...(state.lovers?.playerIds.includes(playerId)
       ? { loverPartnerId: state.lovers.playerIds.find((candidate) => candidate !== playerId) as PlayerId }
@@ -191,6 +191,13 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
     privateEvents: state.privateEvents[playerId] ?? [],
     actionState
   };
+}
+
+function legalThiefChoices(spareRoles: readonly Role[]): Role[] {
+  if (spareRoles.length === 2 && spareRoles.every((role) => role === "werewolf")) {
+    return ["werewolf"];
+  }
+  return [...new Set(spareRoles)];
 }
 
 function publicPhaseStatus(state: GameState): PublicGameView["phaseStatus"] {

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Thief setup now follows the rulebook model: enabling Thief adds two extra Ordinary Townsfolk cards, the two undealt cards become Thief's hidden choices, and double-Werewolf spare cards force Thief to choose Werewolf.
+
 ## 0.6.0 - Host Trust Modes
 
 ### Added
@@ -37,7 +43,7 @@
 ### Changed
 
 - Custom roleflow setup now supports Cupid as a dealt role.
-- Thief spare role cards remain limited to Werewolf, Fortune Teller, Witch, Hunter, and Ordinary Townsfolk.
+- Thief spare cards are derived during deal from the undealt cards.
 - App version reports `0.5.3`.
 
 ## 0.5.2 - Thief Opening Choice
@@ -46,7 +52,7 @@
 
 - `thief` role support for custom roleflow rooms.
 - `thief_choice` opening phase before the normal first night.
-- Custom setup validation for exactly two Thief spare role cards.
+- Custom setup support for Thief opening spare-card choice.
 - Private Thief role-choice view and player action.
 - Host observer visibility for Thief identity, spare cards, and chosen role.
 - Engine test coverage for Thief choice.

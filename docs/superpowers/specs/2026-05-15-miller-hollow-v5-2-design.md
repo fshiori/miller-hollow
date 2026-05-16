@@ -12,19 +12,21 @@ V5.1 establishes pre-room custom role setup. V5.2 builds on that by allowing the
 
 Thief behavior:
 
-- Thief is a role card included in the dealt roles.
-- Two extra role cards are placed in a hidden spare pool.
+- Thief is a role card included in the configured role deck.
+- When Thief is enabled, two extra Ordinary Townsfolk cards are added to the deck before shuffling.
+- After shuffling, player-count cards are dealt and the two undealt cards become the hidden spare pool.
 - If a player is dealt Thief, they see the two spare roles at the start of the game.
 - The Thief chooses one spare role and becomes that role for the rest of the game.
+- If both spare roles are Werewolf, the Thief must choose Werewolf.
 - The unchosen spare card remains hidden.
 - After Thief resolves, the game proceeds into the normal V5 roleflow first night.
 
 V5.2 should keep the online implementation conservative:
 
 - Only one Thief is allowed.
-- Thief choice is required when Thief exists and is alive at game start.
+- Thief choice is required only when the Thief card is dealt to a player.
 - Host/timeout fallback may choose a deterministic legal spare role only to avoid abandoned rooms blocking forever.
-- Thief should not alter player count; the two spare cards are extra cards outside occupied seats.
+- Thief should not alter player count; the two extra Ordinary Townsfolk cards are outside occupied seats.
 
 ## Setup Requirements
 
@@ -35,20 +37,13 @@ Create-room setup should include:
 - Player count: 8-18.
 - Existing V5.1 role counts.
 - Thief count: 0 or 1.
-- Spare role cards: exactly 2 when Thief count is 1.
+- No manual spare-card selection.
 
 Validation:
 
-- If Thief is 0, spare cards must be empty.
-- If Thief is 1, spare cards must contain exactly 2 roles.
 - Total dealt role cards must equal player count.
-- Spare role cards do not count toward player count.
+- The two extra Ordinary Townsfolk cards do not count toward player count.
 - Werewolf and Seer recommendations from V5.1 still apply to dealt role cards.
-- Spare cards may include supported roles only: Werewolf, Seer, Witch, Hunter, Villager.
-
-Open question for implementation:
-
-- If both spare cards are Werewolf, official rules may force the Thief to choose Werewolf. V5.2 should explicitly implement that behavior if following the rulebook source used by the project; otherwise document a conservative fallback before coding.
 
 ## Phase Flow
 
@@ -60,14 +55,15 @@ New phase:
 
 Flow:
 
-1. Host creates a custom room with Thief and two spare cards.
+1. Host creates a custom room with Thief enabled.
 2. Players join and ready.
-3. Game starts and roles are assigned, including Thief.
-4. If Thief exists, phase becomes `thief_choice`.
-5. Thief sees only the two spare cards.
-6. Thief selects one spare role.
-7. Thief's actual role is replaced with the selected role.
-8. Normal first night begins:
+3. Game starts, two extra Ordinary Townsfolk cards are added, the deck is shuffled, and player-count cards are dealt.
+4. The two undealt cards become the spare cards.
+5. If Thief was dealt to a player, phase becomes `thief_choice`.
+6. Thief sees only the two spare cards.
+7. Thief selects one spare role.
+8. Thief's actual role is replaced with the selected role.
+9. Normal first night begins:
    - official roleflow: Seer / Fortune Teller first
    - legacy/app-basic if still supported by selected config
 
@@ -103,8 +99,7 @@ After endgame:
 Create-room UI:
 
 - Add Thief toggle/stepper in custom setup.
-- When Thief is enabled, show two spare card selectors.
-- Disable room creation until the spare cards are valid.
+- When Thief is enabled, explain that the system adds two extra Ordinary Townsfolk cards and derives spare cards after shuffle.
 
 Player UI:
 
@@ -129,10 +124,10 @@ Suggested Traditional Chinese copy:
 - Cupid / Lovers.
 - Little Girl.
 - Multiple Thieves.
-- Arbitrary unsupported spare cards.
+- Manual spare-card selection.
 - Public reveal of spare cards during active game.
 - Mid-game role changes beyond Thief opening choice.
 
 ## Completion
 
-V5.2 is complete when Thief can be included in pre-room custom setup, spare cards are validated before creation, the Thief choice phase resolves before the first night, hidden information remains isolated, and engine/API/browser/remote smoke pass.
+V5.2 is complete when Thief can be included in pre-room custom setup, spare cards are derived from the undealt cards after adding two extra Ordinary Townsfolk cards, the double-Werewolf forced choice is enforced, the Thief choice phase resolves before the first night when Thief is dealt, hidden information remains isolated, and engine/API/browser/remote smoke pass.

@@ -131,7 +131,6 @@ interface CustomRoleSetup {
     cupid: number;
     villager: number;
   };
-  spareRoles?: string[];
   sheriffEnabled: boolean;
   nightOrder: "official" | "legacy";
   werewolfTimeoutNoKill: boolean;
@@ -312,14 +311,7 @@ function render(): void {
                   <label class="check"><input name="cupidEnabled" type="checkbox" /> 啟用丘比特</label>
                   <label class="check"><input name="sheriffEnabled" type="checkbox" checked /> 啟用警長</label>
                 </div>
-                <div id="thief-spare-panel" hidden>
-                  <label>盜賊備選 1
-                    <select name="thiefSpareRole1">${roleChoiceOptions()}</select>
-                  </label>
-                  <label>盜賊備選 2
-                    <select name="thiefSpareRole2">${roleChoiceOptions("hunter")}</select>
-                  </label>
-                </div>
+                <p id="thief-rule-hint" class="muted" hidden>啟用盜賊時，系統會依規則額外加入 2 張普通村民，發牌後留下 2 張底牌給盜賊選擇。</p>
                 <div class="role-derived-count">
                   <span>村民</span>
                   <strong id="villager-count-display">5 張</strong>
@@ -1159,8 +1151,8 @@ function bindCustomRoleSetup(form: HTMLFormElement | null): void {
   const refresh = () => {
     const count = Number(playerCount?.value ?? 8);
     updateDerivedVillagers(form);
-    const sparePanel = form.querySelector<HTMLDivElement>("#thief-spare-panel");
-    if (sparePanel) sparePanel.hidden = !checked(form, "thiefEnabled");
+    const thiefHint = form.querySelector<HTMLParagraphElement>("#thief-rule-hint");
+    if (thiefHint) thiefHint.hidden = !checked(form, "thiefEnabled");
     const wolfRecommendation = form.querySelector<HTMLSpanElement>("#werewolf-recommendation");
     if (wolfRecommendation) wolfRecommendation.textContent = `推薦：${recommendedWerewolves(count)} 張`;
     const setup = readCustomRoleSetup(form);
@@ -1192,17 +1184,9 @@ function readCustomRoleSetup(form: HTMLFormElement): CustomRoleSetup {
     cupid: checked(form, "cupidEnabled") ? 1 : 0,
     villager: Math.max(0, value("villagerCount"))
   };
-  const spareRoles =
-    roles.thief === 1
-      ? [
-          String((form.elements.namedItem("thiefSpareRole1") as HTMLSelectElement | null)?.value ?? "villager"),
-          String((form.elements.namedItem("thiefSpareRole2") as HTMLSelectElement | null)?.value ?? "hunter")
-        ]
-      : undefined;
   return {
     playerCount,
     roles,
-    ...(spareRoles ? { spareRoles } : {}),
     sheriffEnabled: (form.elements.namedItem("sheriffEnabled") as HTMLInputElement | null)?.checked ?? true,
     nightOrder: "official",
     werewolfTimeoutNoKill: true
@@ -1229,12 +1213,6 @@ function updateDerivedVillagers(form: HTMLFormElement): void {
 
 function checked(form: HTMLFormElement, name: string): boolean {
   return (form.elements.namedItem(name) as HTMLInputElement | null)?.checked ?? false;
-}
-
-function roleChoiceOptions(selected = "villager"): string {
-  return ["villager", "werewolf", "seer", "witch", "hunter"]
-    .map((role) => `<option value="${role}" ${role === selected ? "selected" : ""}>${escapeHtml(labelRole(role))}</option>`)
-    .join("");
 }
 
 function customRoleSetupWarning(setup: CustomRoleSetup): string {

@@ -86,8 +86,11 @@ Basic Edition is the current V6 rules scope:
 ## Thief And Cupid
 
 - Thief is available in custom roleflow rooms.
-- If Thief is present, the setup must include exactly two hidden spare role cards.
-- Thief chooses one spare role before the first normal night.
+- If Thief is present, the system adds two extra Ordinary Townsfolk cards to the role deck.
+- After shuffling, player-count cards are dealt to players and the two undealt cards become the hidden Thief spare cards.
+- If Thief is dealt to a player, Thief chooses one spare role before the first normal night.
+- If both spare cards are Werewolves, Thief must choose Werewolf.
+- If Thief is not dealt to any player, no Thief choice phase occurs.
 - Cupid is available in custom roleflow rooms.
 - Cupid chooses two distinct players during `night_cupid`; Cupid may choose themselves as one of the Lovers.
 - Lovers privately learn each other's identity after Cupid resolves.

@@ -35,7 +35,7 @@ Validation:
 - Cupid count is 0 or 1.
 - Cupid counts as a role card in player count.
 - Cupid is a non-Werewolf village-team role.
-- Thief spare role cards remain limited to Werewolf, Fortune Teller, Witch, Hunter, and Ordinary Townsfolk; Cupid is selected as a dealt role, not as a spare role.
+- Thief spare cards are derived from the two undealt cards after adding two extra Ordinary Townsfolk cards; Cupid is selected as a dealt role, not as a spare role.
 - Existing V5.1 Werewolf and Seer recommendation rules still apply.
 - Cupid can coexist with Hunter, Witch, Thief, and Sheriff, but reaction ordering must be explicit.
 

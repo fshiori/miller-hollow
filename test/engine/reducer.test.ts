@@ -20,6 +20,10 @@ const zeroRandom: RandomSource = {
   nextInt: () => 0
 };
 
+const identityRandom: RandomSource = {
+  nextInt: (maxExclusive) => maxExclusive - 1
+};
+
 function players(count = 8): GamePlayer[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `p${index + 1}`,
@@ -155,23 +159,38 @@ describe("Miller Hollow V1 engine", () => {
     const preset = createCustomRoleflowPreset({
       playerCount: 8,
       roles: { werewolf: 2, seer: 1, thief: 1, hunter: 1, villager: 3 },
-      spareRoles: ["witch", "villager"],
       sheriffEnabled: true,
       nightOrder: "official",
       werewolfTimeoutNoKill: true
     });
-    let game = createGame(players(8), zeroRandom, preset);
+    let game = createGame(players(8), identityRandom, preset);
     const thief = game.players.find((player) => game.roles[player.id] === "thief")?.id as PlayerId;
 
     expect(game.phase).toBe("thief_choice");
     expect(toPrivatePlayerView(game, thief).legalActions).toContain("submit_thief_choice");
-    expect(toPrivatePlayerView(game, thief).legalRoleChoices).toEqual(["witch", "villager"]);
+    expect(toPrivatePlayerView(game, thief).legalRoleChoices).toEqual(["villager"]);
+    expect(game.thief?.spareRoles).toEqual(["villager", "villager"]);
     expect(toPublicView(game).players.every((player) => player.role === undefined)).toBe(true);
 
-    game = applyCommand(game, { type: "submit_thief_choice", actorId: thief, role: "witch" }).state;
-    expect(game.roles[thief]).toBe("witch");
-    expect(game.thief?.chosenRole).toBe("witch");
+    game = applyCommand(game, { type: "submit_thief_choice", actorId: thief, role: "villager" }).state;
+    expect(game.roles[thief]).toBe("villager");
+    expect(game.thief?.chosenRole).toBe("villager");
     expect(game.phase).toBe("night_seer");
+  });
+
+  it("forces Thief to choose Werewolf when both spare cards are Werewolves", () => {
+    const game = createGame(players(), zeroRandom);
+    const thiefState: GameState = {
+      ...game,
+      phase: "thief_choice",
+      roles: { ...game.roles, p1: "thief" },
+      thief: { playerId: "p1", spareRoles: ["werewolf", "werewolf"] }
+    };
+
+    expect(toPrivatePlayerView(thiefState, "p1").legalRoleChoices).toEqual(["werewolf"]);
+    expect(() => applyCommand(thiefState, { type: "submit_thief_choice", actorId: "p1", role: "villager" })).toThrow("Invalid Thief role choice");
+    const resolved = applyCommand(thiefState, { type: "submit_thief_choice", actorId: "p1", role: "werewolf" }).state;
+    expect(resolved.roles.p1).toBe("werewolf");
   });
 
   it("runs V5.3 Cupid choice before the first night and reveals Lovers privately", () => {

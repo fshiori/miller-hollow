@@ -28,7 +28,8 @@ try {
   await pages[0].goto(base);
   await pages[0].getByRole("button", { name: "建立房間" }).waitFor();
   await pages[0].getByRole("button", { name: "加入房間" }).waitFor();
-  await pages[0].locator("body").filter({ hasText: "8-18 人" }).waitFor();
+  await pages[0].locator("body").filter({ hasText: "米勒山谷狼人" }).waitFor();
+  await pages[0].locator("body").filter({ hasText: "米勒山谷正被狼人侵擾" }).waitFor();
   await pages[0].locator('#create-form input[name="nickname"]').fill("Browser 18 Host");
   await pages[0].locator('#create-form select[name="customPlayerCount"]').selectOption("18");
   await pages[0].locator('#create-form button[type="submit"]').click();

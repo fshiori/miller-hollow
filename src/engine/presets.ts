@@ -43,7 +43,6 @@ export interface CustomRoleSetup {
   sheriffEnabled: boolean;
   nightOrder: "official" | "legacy";
   werewolfTimeoutNoKill: boolean;
-  spareRoles?: Role[];
 }
 
 export interface PublicPresetSummary {
@@ -200,8 +199,7 @@ export function createCustomRoleflowPreset(setup: CustomRoleSetup): RolePreset {
     counts: setup.roles,
     nightOrder: setup.nightOrder,
     werewolfTimeoutNoKill: setup.werewolfTimeoutNoKill,
-    sheriffEnabled: setup.sheriffEnabled,
-    spareRoles: setup.spareRoles ?? []
+    sheriffEnabled: setup.sheriffEnabled
   });
 }
 
@@ -240,18 +238,6 @@ export function validateCustomRoleSetup(setup: CustomRoleSetup): void {
   if (cupids > 1) {
     throw new Error("Cupid is limited to 0 or 1");
   }
-  const spareRoles = setup.spareRoles ?? [];
-  if (thieves === 0 && spareRoles.length > 0) {
-    throw new Error("Spare roles require Thief");
-  }
-  if (thieves === 1 && spareRoles.length !== 2) {
-    throw new Error("Thief requires exactly two spare roles");
-  }
-  for (const role of spareRoles) {
-    if (!roleDefinitions[role]?.implemented || role === "thief" || role === "cupid") {
-      throw new Error(`Unsupported Thief spare role ${role}`);
-    }
-  }
   if (werewolves < 1) {
     throw new Error("Custom role setup requires at least one Werewolf");
   }
@@ -278,7 +264,6 @@ function createPreset(input: {
   nightOrder: "legacy" | "official";
   werewolfTimeoutNoKill: boolean;
   sheriffEnabled: boolean;
-  spareRoles?: readonly Role[];
 }): RolePreset {
   const roles = expandRoles(input.counts);
   if (roles.length !== input.playerCount) {
@@ -300,7 +285,7 @@ function createPreset(input: {
     nightOrder: input.nightOrder,
     werewolfTimeoutNoKill: input.werewolfTimeoutNoKill,
     sheriffEnabled: input.sheriffEnabled,
-    spareRoles: Object.freeze([...(input.spareRoles ?? [])])
+    spareRoles: Object.freeze([])
   });
 }
 

@@ -65,7 +65,6 @@ try {
     customRoleSetup: {
       playerCount: 8,
       roles: { werewolf: 2, seer: 1, thief: 1, hunter: 1, villager: 3 },
-      spareRoles: ["witch", "villager"],
       sheriffEnabled: true,
       nightOrder: "official",
       werewolfTimeoutNoKill: true

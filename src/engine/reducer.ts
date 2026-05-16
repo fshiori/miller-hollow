@@ -25,7 +25,9 @@ export function createGame(players: GamePlayer[], random: RandomSource, presetIn
     throw new Error(`${preset.label} requires exactly ${preset.playerCount} players`);
   }
 
-  const roles = shuffleWithRandom<Role>(preset.roles, random);
+  const deck: Role[] = preset.roles.includes("thief") ? [...preset.roles, "villager", "villager"] : [...preset.roles];
+  const roles = shuffleWithRandom<Role>(deck, random);
+  const spareRoles = roles.slice(players.length);
   const assignedRoles: Record<PlayerId, Role> = {};
   const alive: Record<PlayerId, boolean> = {};
   const privateEvents: Record<PlayerId, GameEvent[]> = {};
@@ -49,7 +51,7 @@ export function createGame(players: GamePlayer[], random: RandomSource, presetIn
     nightActions: { seerViews: {} },
     votes: {},
     publicVoteResults: [],
-    ...(thiefPlayerId ? { thief: { playerId: thiefPlayerId, spareRoles: [...preset.spareRoles] } } : {}),
+    ...(thiefPlayerId ? { thief: { playerId: thiefPlayerId, spareRoles } } : {}),
     sheriff: { electionVotes: {}, electionCount: 0 },
     pendingReactions: [],
     rules: {
@@ -107,7 +109,8 @@ export function buildTimeoutCommand(state: GameState, random: RandomSource): Gam
     if (!thief?.playerId || thief.spareRoles.length === 0) {
       throw new Error("No pending Thief choice");
     }
-    return { type: "submit_thief_choice", actorId: thief.playerId, role: thief.spareRoles[random.nextInt(thief.spareRoles.length)] as Role };
+    const choices = legalThiefChoices(thief.spareRoles);
+    return { type: "submit_thief_choice", actorId: thief.playerId, role: choices[random.nextInt(choices.length)] as Role };
   }
 
   if (state.phase === "night_cupid") {
@@ -188,7 +191,7 @@ function submitThiefChoice(state: GameState, actorId: PlayerId, role: Role): Red
   if (state.roles[actorId] !== "thief") {
     throw new Error(`Player ${actorId} is not thief`);
   }
-  if (!thief.spareRoles.includes(role)) {
+  if (!legalThiefChoices(thief.spareRoles).includes(role)) {
     throw new Error("Invalid Thief role choice");
   }
   const next = cloneState(state);
@@ -202,6 +205,13 @@ function submitThiefChoice(state: GameState, actorId: PlayerId, role: Role): Red
   const phaseEvent = event("phase_changed", phaseMessage(next.phase));
   next.publicEvents.push(choiceEvent, phaseEvent);
   return { state: next, events: [choiceEvent, phaseEvent] };
+}
+
+function legalThiefChoices(spareRoles: readonly Role[]): Role[] {
+  if (spareRoles.length === 2 && spareRoles.every((role) => role === "werewolf")) {
+    return ["werewolf"];
+  }
+  return [...new Set(spareRoles)];
 }
 
 function submitCupidLovers(state: GameState, actorId: PlayerId, targetIds: [PlayerId, PlayerId]): ReducerResult {
