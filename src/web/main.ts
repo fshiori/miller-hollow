@@ -280,8 +280,8 @@ function render(): void {
         <section class="auth-layout">
           <header class="masthead">
             <div class="eyebrow">隱藏身分桌遊</div>
-            <h1>米勒山谷</h1>
-            <p>8-18 人。沒有主持人也能開始一場村莊對抗。</p>
+            <h1>米勒山谷狼人</h1>
+            <p>在偏遠鄉間，米勒山谷正被狼人侵擾。夜裡有人遇害，白天倖存者只能靠討論、推理與投票，在村莊消失前找出古老邪惡。</p>
           </header>
           <div class="panel auth-panel">
             <form id="create-form" class="auth-card primary-auth">
