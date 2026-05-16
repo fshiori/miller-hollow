@@ -280,7 +280,7 @@ function render(): void {
           <header class="masthead">
             <div class="eyebrow">隱藏身分桌遊</div>
             <h1>米勒山谷狼人</h1>
-            <p>在偏遠鄉間，米勒山谷正被狼人侵擾。夜裡有人遇害，白天倖存者只能靠討論、推理與投票，在村莊消失前找出古老邪惡。</p>
+            <p>位在美國中部米勒山谷中的偏遠小鎮最近被狼人滲透。每晚，因為某些神秘原因（也許是溫室效應）變成狼人的鎮民會殺死其他良善的鎮民。現在是控制和消滅這些流傳自遠古時代邪惡物種的最後關頭了，否則，鎮上所剩無幾的居民將無一倖免。</p>
           </header>
           <div class="panel auth-panel">
             <form id="create-form" class="auth-card primary-auth">
