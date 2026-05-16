@@ -7,6 +7,7 @@ Date: 2026-05-15
 May include:
 
 - Room id, status, settings, host seat id.
+- Room trust mode in `settings.hostMode`.
 - Selected public preset id, family, rules source, label, player count, and labeled role-count summary.
 - Seat nicknames, connection status, ready state, and last seen time.
 - Public game phase, round, alive/dead status, public events, phase status.
@@ -66,9 +67,9 @@ Spectators must never receive:
 - Private role data before endgame.
 - Action controls.
 
-## Host Observer View
+## Dedicated Host Console View
 
-Host observers receive privileged read-only observer views.
+Only rooms created with `settings.hostMode === "dedicated_host"` may receive privileged read-only observer views. The dedicated host authenticates with a separate host token, not a player reconnect token, and does not occupy a player seat.
 
 May include:
 
@@ -94,6 +95,11 @@ Must not include:
 - Socket ticket values or hashes.
 - Spectator ticket values or hashes.
 - Observer ticket values or hashes.
+- Dedicated host token or token hash.
 - Durable Object storage internals.
 
-Host observer sockets must not accept player actions.
+Dedicated host console sockets must not accept player actions.
+
+## Player Host Boundary
+
+Player-host rooms use the same public and private player views as every other player. A player-host may administer the room, but must not receive observer tickets, observer state, observer sockets, full role lists, live vote maps, or other hidden-information console payloads before endgame.

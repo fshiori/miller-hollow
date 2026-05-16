@@ -21,6 +21,7 @@ import {
   normalizeRoomState,
   occupiedSeatCount,
   resizeSeatsForPreset,
+  type HostMode,
   type RoomState
 } from "./room-state";
 import { createToken, hashToken } from "./tokens";
@@ -68,6 +69,7 @@ interface HostSeatRequest extends TokenRequest {
 interface InitializeRequest {
   presetId?: string;
   customRoleSetup?: CustomRoleSetup;
+  hostMode?: HostMode;
 }
 
 interface ClientMessage {
@@ -213,7 +215,9 @@ export class RoomObject implements DurableObject {
     seat.playerTokenHash = await hashToken(token);
     seat.ready = false;
     delete seat.readyAt;
-    room.hostSeatId ??= seat.seatId;
+    if (room.settings.hostMode === "player_host") {
+      room.hostSeatId ??= seat.seatId;
+    }
     room.updatedAt = Date.now();
     await this.saveRoom(room);
     this.logRoomEvent(room, "seat_joined", { seatId: seat.seatId, occupiedSeats: room.seats.filter((candidate) => candidate.nickname).length });
@@ -251,8 +255,8 @@ export class RoomObject implements DurableObject {
     if (room.status !== "lobby") {
       return json({ error: "Game has already started" }, 409);
     }
-    const host = await this.authenticate(room, body.seatId, body.token);
-    if (!host || host.seatId !== room.hostSeatId) {
+    const host = await this.authenticateHost(room, body.seatId, body.token);
+    if (!host) {
       return json({ error: "Only the host can start" }, 403);
     }
     if (occupiedSeatCount(room) !== room.settings.playerCount || room.seats.some((seat) => !seat.nickname)) {
@@ -295,6 +299,9 @@ export class RoomObject implements DurableObject {
         this.kickSeat(room, body.targetSeatId);
       } else if (action === "transfer") {
         this.assertLobby(room);
+        if (room.settings.hostMode === "dedicated_host") {
+          throw new Error("Dedicated host rooms cannot transfer host to a player");
+        }
         this.transferHost(room, body.targetSeatId);
         room.observerTickets = {};
         this.disconnectObservers("Host changed. Host observer closed.");
@@ -333,6 +340,12 @@ export class RoomObject implements DurableObject {
     if (room.status !== "lobby" || occupiedSeatCount(room) > 0) {
       return json({ error: "Room is already open" }, 409);
     }
+    room.settings.hostMode = body.hostMode === "dedicated_host" ? "dedicated_host" : "player_host";
+    let hostToken: string | undefined;
+    if (room.settings.hostMode === "dedicated_host" && !room.hostTokenHash) {
+      hostToken = createToken();
+      room.hostTokenHash = await hashToken(hostToken);
+    }
     if (!isBasicPresetId(body.presetId)) {
       if (body.customRoleSetup) {
         try {
@@ -344,7 +357,7 @@ export class RoomObject implements DurableObject {
         room.updatedAt = Date.now();
         await this.saveRoom(room);
         this.logRoomEvent(room, "room_initialized", { presetId: "custom_roleflow" });
-        return json(this.publicRoomView(room));
+        return json({ room: this.publicRoomView(room), ...(hostToken ? { hostToken } : {}) });
       }
       return json({ error: "Unsupported preset" }, 400);
     }
@@ -352,14 +365,14 @@ export class RoomObject implements DurableObject {
     room.updatedAt = Date.now();
     await this.saveRoom(room);
     this.logRoomEvent(room, "room_initialized", { presetId: body.presetId });
-    return json(this.publicRoomView(room));
+    return json({ room: this.publicRoomView(room), ...(hostToken ? { hostToken } : {}) });
   }
 
   private async reset(request: Request): Promise<Response> {
     const body = (await request.json().catch(() => ({}))) as TokenRequest;
     const room = await this.loadRoom(this.state.id.toString());
-    const host = await this.authenticate(room, body.seatId, body.token);
-    if (!host || host.seatId !== room.hostSeatId) {
+    const host = await this.authenticateHost(room, body.seatId, body.token);
+    if (!host) {
       return json({ error: "Only the host can reset" }, 403);
     }
     if (room.status === "playing") {
@@ -402,6 +415,9 @@ export class RoomObject implements DurableObject {
   private async observerState(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const room = await this.loadRoom(this.state.id.toString());
+    if (room.settings.hostMode !== "dedicated_host") {
+      return json({ error: "Player-host rooms cannot reveal hidden information" }, 403);
+    }
     const host = await this.authenticateHost(room, url.searchParams.get("seatId"), url.searchParams.get("token"));
     if (!host) {
       return json({ error: "Only the host can open host observer" }, 403);
@@ -414,8 +430,8 @@ export class RoomObject implements DurableObject {
   private async diagnostics(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const room = await this.loadRoom(this.state.id.toString());
-    const seat = await this.authenticate(room, url.searchParams.get("seatId"), url.searchParams.get("token"));
-    if (!seat || seat.seatId !== room.hostSeatId) {
+    const host = await this.authenticateHost(room, url.searchParams.get("seatId"), url.searchParams.get("token"));
+    if (!host) {
       return json({ error: "Only the host can read diagnostics" }, 403);
     }
 
@@ -433,6 +449,7 @@ export class RoomObject implements DurableObject {
       pendingSocketTickets: Object.keys(room.socketTickets).length,
       chatMessages: room.chatMessages.length,
       settings: {
+        hostMode: room.settings.hostMode,
         locked: room.settings.locked,
         spectatorsEnabled: room.settings.spectatorsEnabled
       },
@@ -494,6 +511,9 @@ export class RoomObject implements DurableObject {
   private async createObserverTicket(request: Request): Promise<Response> {
     const body = (await request.json().catch(() => ({}))) as TokenRequest;
     const room = await this.loadRoom(this.state.id.toString());
+    if (room.settings.hostMode !== "dedicated_host") {
+      return json({ error: "Player-host rooms cannot reveal hidden information" }, 403);
+    }
     const host = await this.authenticateHost(room, body.seatId, body.token);
     if (!host) {
       return json({ error: "Only the host can open host observer" }, 403);
@@ -601,6 +621,9 @@ export class RoomObject implements DurableObject {
     }
     const url = new URL(request.url);
     const room = await this.loadRoom(this.state.id.toString());
+    if (room.settings.hostMode !== "dedicated_host") {
+      return json({ error: "Player-host rooms cannot reveal hidden information" }, 403);
+    }
     const ok = await this.authenticateObserverTicket(room, url.searchParams.get("ticket"));
     if (!ok) {
       return json({ error: "Invalid or expired observer ticket" }, 403);
@@ -1162,6 +1185,12 @@ export class RoomObject implements DurableObject {
   }
 
   private async authenticateHost(room: RoomState, seatId: string | null | undefined, token: string | null | undefined) {
+    if (room.settings.hostMode === "dedicated_host") {
+      if (!token || !room.hostTokenHash) {
+        return undefined;
+      }
+      return (await hashToken(token)) === room.hostTokenHash ? { seatId: "dedicated-host" } : undefined;
+    }
     const seat = await this.authenticate(room, seatId, token);
     return seat?.seatId === room.hostSeatId ? seat : undefined;
   }
@@ -1261,8 +1290,12 @@ export class RoomObject implements DurableObject {
     for (const socket of this.spectatorSessions) {
       this.send(socket, { type: "room_view", room: this.publicRoomView(room) });
     }
-    for (const socket of this.observerSessions) {
-      this.send(socket, { type: "observer_view", room: this.observerRoomView(room) });
+    if (room.settings.hostMode !== "dedicated_host") {
+      this.disconnectObservers("Player-host rooms cannot reveal hidden information");
+    } else {
+      for (const socket of this.observerSessions) {
+        this.send(socket, { type: "observer_view", room: this.observerRoomView(room) });
+      }
     }
   }
 

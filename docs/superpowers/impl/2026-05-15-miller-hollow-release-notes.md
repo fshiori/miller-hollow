@@ -586,6 +586,42 @@ Release:
 
 - Commit/tag only; deployment can be done from `v0.5.3` when ready.
 
+## 0.6.0 - V6 Host Trust Modes
+
+Status:
+
+- Completed locally.
+
+Completed:
+
+- Added explicit room trust modes:
+  - `player_host` is the default.
+  - `dedicated_host` is opt-in.
+- Player-host rooms keep the creator as a participating player and no longer expose hidden-information observer APIs.
+- Dedicated-host rooms create a separate non-player host identity with a dedicated host token hash.
+- Dedicated hosts can administer the room, start once all player seats are full and ready, and open the `主持後台` hidden-information console.
+- Dedicated-host rooms do not assign the host to a player seat and cannot transfer hosting to a player seat.
+- Room metadata now discloses the trust mode to players and spectators.
+- Observer state, observer tickets, and observer sockets now require `dedicated_host` mode.
+- Browser copy now distinguishes public spectator mode from the privileged dedicated-host console.
+- API smoke now covers both player-host observer rejection and dedicated-host observer access.
+- Browser smoke now verifies player-host hidden-info console rejection.
+- Updated README, changelog, rules docs, view contract, and host authorization matrix.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+
+Release:
+
+- Commit/tag `v0.6.0`.
+
 ## Planned Next Versions
 
 ### Later

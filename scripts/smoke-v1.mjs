@@ -88,6 +88,8 @@ try {
   console.log("Preset smoke passed");
   await smokeOfficialRoleflow();
   console.log("Roleflow smoke passed");
+  await smokeDedicatedHostObserver();
+  console.log("Dedicated host smoke passed");
   const room = await post("/api/rooms", { presetId: "app_basic_8" });
   const joined = [];
   const spectatorTicket = await post(`/api/rooms/${room.roomId}/spectator-ticket`);
@@ -195,12 +197,8 @@ try {
     seatId: joined[1].seatId,
     token: joined[1].token
   });
-  let observer = await observerState(room.roomId, joined[0]);
-  assert(observer.observer?.players?.some((player) => player.role === "werewolf"), "observer state did not reveal roles to host");
-  assert(!JSON.stringify(observer).includes("playerTokenHash"), "observer state leaked token hashes");
-  assert(!JSON.stringify(observer).includes("socketTickets"), "observer state leaked socket tickets");
-  await expectObserverSocket(room.roomId, joined[0]);
-  console.log("Observer smoke passed");
+  await expectHttpError(`/api/rooms/${room.roomId}/observer-state?seatId=${joined[0].seatId}&token=${joined[0].token}`, 403);
+  console.log("Player-host observer rejection smoke passed");
 
   const wolfIndexes = privates.map((view, index) => (view.role === "werewolf" ? index : -1)).filter((index) => index >= 0);
   const wolfIndex = wolfIndexes[0];
@@ -230,8 +228,6 @@ try {
   let publicState = await get(`/api/rooms/${room.roomId}/state`);
   assert(!JSON.stringify(publicState).includes(wolfMessage), "public state leaked werewolf chat");
   await expectSpectatorPublicOnly(room.roomId, wolfMessage);
-  observer = await observerState(room.roomId, joined[0]);
-  assert(JSON.stringify(observer).includes(wolfMessage), "observer state did not include werewolf chat");
   console.log("Werewolf chat smoke passed");
 
   const wolfTarget = privates[wolfIndex].legalTargets[0];
@@ -267,8 +263,6 @@ try {
   const target = (await get(`/api/rooms/${room.roomId}/state`)).game.players.find((player) => player.alive).id;
   const votingPlayers = await livingSessions(room.roomId, joined);
   await socketSend(room.roomId, votingPlayers[0], { type: "vote", targetId: target }, undefined);
-  observer = await observerState(room.roomId, joined[0]);
-  assert(Object.keys(observer.observer?.votes ?? {}).length >= 1, "observer state did not include vote map");
   publicState = await get(`/api/rooms/${room.roomId}/state`);
   assert(!JSON.stringify(publicState).includes('"votes"'), "public state leaked vote map");
   assert((publicState.game.voteResults ?? []).length === 0, "public state revealed vote results before vote resolution");
@@ -393,6 +387,39 @@ async function smokeOfficialRoleflow() {
   await waitForNotPhase(room.roomId, "hunter_revenge", 5_000);
   state = await get(`/api/rooms/${room.roomId}/state`);
   assert((state.game.voteResults ?? []).at(-1)?.votes.some((vote) => vote.weight === 2), "roleflow vote reveal did not include Sheriff weight");
+}
+
+async function smokeDedicatedHostObserver() {
+  const room = await post("/api/rooms", {
+    hostMode: "dedicated_host",
+    customRoleSetup: {
+      playerCount: 8,
+      roles: { werewolf: 2, seer: 1, witch: 1, villager: 4 },
+      sheriffEnabled: true,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true
+    }
+  });
+  assert(room.hostToken, "dedicated host token was not returned");
+  let state = await get(`/api/rooms/${room.roomId}/state`);
+  assert(state.settings.hostMode === "dedicated_host", "dedicated host mode was not public");
+  assert(state.seats.every((seat) => !seat.nickname), "dedicated host occupied a player seat");
+  const joined = [];
+  for (let index = 1; index <= 8; index += 1) {
+    joined.push(await post(`/api/rooms/${room.roomId}/join`, { nickname: `Dedicated ${index}` }));
+  }
+  for (const player of joined) {
+    await socketSend(room.roomId, player, { type: "set_ready", ready: true }, undefined);
+  }
+  await waitForEligibility(room.roomId, true);
+  await post(`/api/rooms/${room.roomId}/start`, { seatId: "dedicated-host", token: room.hostToken });
+  state = await get(`/api/rooms/${room.roomId}/state`);
+  assert(!publicStateHasRoles(state), "dedicated public state leaked roles before endgame");
+  const observer = await observerState(room.roomId, { seatId: "dedicated-host", token: room.hostToken });
+  assert(observer.observer?.players?.some((player) => player.role === "werewolf"), "dedicated host observer did not reveal roles");
+  assert(!JSON.stringify(observer).includes("playerTokenHash"), "dedicated observer leaked token hashes");
+  assert(!JSON.stringify(observer).includes("socketTickets"), "dedicated observer leaked socket tickets");
+  await expectObserverSocket(room.roomId, { seatId: "dedicated-host", token: room.hostToken });
 }
 
 async function post(path, body) {

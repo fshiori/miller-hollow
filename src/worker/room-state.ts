@@ -14,6 +14,7 @@ import type { Phase } from "../engine/phases";
 export type RoomStatus = "lobby" | "playing" | "ended";
 export type ConnectionStatus = "connected" | "disconnected";
 export type SupportedPlayerCount = number;
+export type HostMode = "player_host" | "dedicated_host";
 
 export interface SeatState {
   seatId: string;
@@ -33,11 +34,13 @@ export interface RoomState {
     playerCount: SupportedPlayerCount;
     presetId: PresetId;
     customRoleSetup?: CustomRoleSetup;
+    hostMode: HostMode;
     spectatorsEnabled: boolean;
     locked: boolean;
   };
   seats: SeatState[];
   hostSeatId?: string;
+  hostTokenHash?: string;
   game?: GameState;
   chatMessages: ChatMessage[];
   phaseInteraction: PhaseInteractionState;
@@ -94,6 +97,7 @@ export function createInitialRoomState(roomId: string, now: number): RoomState {
     settings: {
       playerCount: preset.playerCount,
       presetId: preset.id,
+      hostMode: "player_host",
       spectatorsEnabled: true,
       locked: false
     },
@@ -124,6 +128,7 @@ export function normalizeRoomState(room: RoomState): RoomState {
     playerCount: preset.playerCount,
     presetId: preset.id,
     ...(preset.id === "custom_roleflow" && settings.customRoleSetup ? { customRoleSetup: settings.customRoleSetup } : {}),
+    hostMode: settings.hostMode === "dedicated_host" ? "dedicated_host" : "player_host",
     spectatorsEnabled: settings.spectatorsEnabled ?? true,
     locked: settings.locked ?? false
   };

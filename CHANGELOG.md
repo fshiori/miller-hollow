@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.0 - Host Trust Modes
+
+### Added
+
+- Explicit room host modes: default `player_host` and opt-in `dedicated_host`.
+- Dedicated host identity with a separate host token hash that does not occupy a player seat.
+- Dedicated host console access for hidden-information moderation/demo views.
+- Public room trust labels so players and spectators can see whether a dedicated host can view hidden information.
+- API smoke coverage for player-host observer rejection and dedicated-host observer access.
+- V6 design and implementation documents.
+
+### Changed
+
+- Player-host rooms can no longer open hidden-information observer state, tickets, or sockets.
+- Host observer UI copy is now `主持後台` and is reserved for dedicated-host rooms.
+- Dedicated-host rooms cannot transfer hosting to a player seat.
+- App version reports `0.6.0`.
+
 ## 0.5.3 - Cupid And Lovers
 
 ### Added

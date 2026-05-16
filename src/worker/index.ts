@@ -1,10 +1,11 @@
 import { RoomObject } from "./room-object";
-import { isBasicPresetId, validateCustomRoleSetup, type CustomRoleSetup } from "../engine";
+import { DEFAULT_BASIC_PRESET_ID, isBasicPresetId, validateCustomRoleSetup, type CustomRoleSetup } from "../engine";
 import type { Env } from "./env";
+import type { HostMode } from "./room-state";
 
 export { RoomObject };
 
-const APP_VERSION = "0.5.3";
+const APP_VERSION = "0.6.0";
 const CREATE_ROOM_LIMIT = { limit: 10, windowMs: 60_000 };
 const SMOKE_CREATE_ROOM_LIMIT = { limit: 50, windowMs: 60_000 };
 const createRoomBuckets = new Map<string, RateBucket>();
@@ -17,6 +18,7 @@ interface RateBucket {
 interface CreateRoomRequest {
   presetId?: unknown;
   customRoleSetup?: CustomRoleSetup;
+  hostMode?: HostMode;
 }
 
 export default {
@@ -64,16 +66,21 @@ export default {
       const stub = env.ROOMS.get(id);
       const joinUrl = `/room/${id.toString()}`;
       await stub.fetch(new Request(`${url.origin}/rooms/${id.toString()}/state`));
-      if (body.customRoleSetup || body.presetId) {
-        await stub.fetch(
+      let initialized: { hostToken?: string } = {};
+      if (body.customRoleSetup || body.presetId || body.hostMode === "dedicated_host") {
+        const initializeResponse = await stub.fetch(
           new Request(`${url.origin}/rooms/${id.toString()}/initialize`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify(body.customRoleSetup ? { customRoleSetup: body.customRoleSetup } : { presetId: body.presetId })
+            body: JSON.stringify({
+              ...(body.customRoleSetup ? { customRoleSetup: body.customRoleSetup } : { presetId: body.presetId ?? DEFAULT_BASIC_PRESET_ID }),
+              hostMode: body.hostMode === "dedicated_host" ? "dedicated_host" : "player_host"
+            })
           })
         );
+        initialized = (await initializeResponse.json().catch(() => ({}))) as { hostToken?: string };
       }
-      return Response.json({ roomId: id.toString(), joinUrl });
+      return Response.json({ roomId: id.toString(), joinUrl, ...(initialized.hostToken ? { hostToken: initialized.hostToken } : {}) });
     }
 
     const roomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/(.+)$/);

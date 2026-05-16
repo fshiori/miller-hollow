@@ -1,6 +1,6 @@
 # Miller Hollow
 
-Basic Edition V5 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
+Basic Edition V6 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
 
 The player-facing browser UI is Traditional Chinese. Public API fields, internal ids, and developer diagnostics remain English for compatibility.
 
@@ -12,8 +12,8 @@ This is an unofficial fan implementation and is not affiliated with the original
 - `npm run typecheck` runs TypeScript checks.
 - `npm test` runs engine unit tests.
 - `npm run build` builds the browser assets and typechecks the Worker.
-- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, custom Thief/Cupid setup, V5 roleflow, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, host observer access, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, day readiness, WebSocket night actions, day chat, vote resolution, and public weighted vote reveal.
-- `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus spectator and host-observer views through create, join, watch, reconnect, V5 roleflow start, Seer action, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, voting, weighted vote reveal, Traditional Chinese UI assertions, and responsive screenshots including an 18-seat lobby.
+- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, custom Thief/Cupid setup, V5 roleflow, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, player-host observer rejection, dedicated-host observer access, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, day readiness, WebSocket night actions, day chat, vote resolution, and public weighted vote reveal.
+- `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus spectator views through create, join, watch, reconnect, V5 roleflow start, Seer action, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, voting, weighted vote reveal, Traditional Chinese UI assertions, player-host hidden-info console rejection, and responsive screenshots including an 18-seat lobby.
 - `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev` and `MILLER_HOLLOW_PRESET_ID=official_basic_18` or `official_roleflow_8`.
 - `npm run deploy:versioned` deploys with `MILLER_HOLLOW_BUILD_SHA` set from the current git commit.
 - `npm run deploy:dry-run` validates the Worker bundle and Cloudflare configuration without publishing.
@@ -55,11 +55,13 @@ Hosts can also create a custom roleflow room before the lobby opens. Custom role
 
 Rooms use anonymous nicknames and browser-held reconnect tokens. The server stores token hashes, owns the hidden game state, and sends each browser only public room state plus that seat's private role/action view.
 
-Hosts can copy player and spectator links, lock the lobby, toggle spectator access, kick lobby seats, transfer host, inspect redacted room diagnostics, open Sheriff election during day discussion, fast-forward phases, and reset non-playing rooms. Players mark ready before the host can start.
+Rooms have an explicit trust mode. The default `player_host` mode makes the room creator a normal player-host: they occupy a player seat, can administer the room, and cannot view hidden information. The opt-in `dedicated_host` mode creates a non-player host with a separate host token; that host can administer the room and open a clearly labeled hidden-information console.
+
+Player-hosts can copy player and spectator links, lock the lobby, toggle spectator access, kick lobby seats, transfer host, inspect redacted room diagnostics, open Sheriff election during day discussion, fast-forward phases, and reset non-playing rooms. Players mark ready before the host can start. Dedicated hosts can use the same administration controls, but do not occupy a player seat and cannot transfer hosting to a player.
 
 Spectators can watch from `/room/:roomId/watch` without occupying a player seat. Spectator sockets receive public room views only and never receive player private views.
 
-Hosts can open `/room/:roomId/host-watch` from the host browser session for a read-only observer view that reveals roles, Werewolf chat, proposed targets, readiness, and vote details for moderation and demos. Host observer access uses short-lived tickets and does not expose reconnect tokens or ticket hashes.
+Dedicated hosts can open `/room/:roomId/host-watch` from the host browser session for a read-only `主持後台` view that reveals roles, Werewolf chat, proposed targets, readiness, and vote details for moderation and demos. Player-host rooms reject this path. Host console access uses short-lived tickets and does not expose reconnect tokens or ticket hashes.
 
 Live vote maps are visible only in host observer mode while voting is active. After a day vote resolves, players and spectators receive the resolved vote result showing each voter, target, vote weight, weighted tally, tie state, and execution result.
 
@@ -110,7 +112,8 @@ For local Cloudflare credentials, copy `.env.example` to `.env.local` and keep `
 - WebSockets use short-lived single-use socket tickets. Browsers exchange their reconnect token through `POST /api/rooms/:roomId/socket-ticket`, then open `/socket?ticket=...`.
 - Host-only `/diagnostics` returns redacted operational counters such as occupied seats, connected seats, active sockets, pending socket tickets, phase, and timestamps.
 - Spectator WebSockets use short-lived single-use tickets and receive only public room state.
-- Host controls are token-authenticated and do not expose role assignments or private state.
+- Host controls are token-authenticated and do not expose role assignments or private state in player-host rooms.
+- Hidden-information host console APIs require `dedicated_host` mode and the dedicated host token. Player-host rooms cannot mint observer tickets, read observer state, or open observer sockets.
 - Worker logs use event names and counters only; they must not include reconnect tokens, token hashes, private views, or full room snapshots.
 - Production code should avoid logging room snapshots or raw game state.
 

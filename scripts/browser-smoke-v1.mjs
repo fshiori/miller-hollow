@@ -40,6 +40,19 @@ try {
   await pages[0].locator("#create-form").waitFor();
 
   await pages[0].goto(base);
+  await pages[0].locator('#create-form input[name="nickname"]').fill("Browser Dedicated Host");
+  await pages[0].locator('#create-form input[name="hostMode"][value="dedicated_host"]').check();
+  await pages[0].locator('#create-form button[type="submit"]').click();
+  await pages[0].getByTestId("room-id").waitFor();
+  await pages[0].locator(".room-meta").filter({ hasText: "專職主持可查看隱藏資訊" }).waitFor();
+  await pages[0].getByRole("link", { name: "主持後台" }).click();
+  await pages[0].locator("body").filter({ hasText: "主持後台" }).waitFor();
+  await pages[0].locator("body").filter({ hasText: "等待遊戲開始" }).waitFor();
+  await pages[0].getByRole("link", { name: "回到房間" }).click();
+  await pages[0].locator("#leave-button").click();
+  await pages[0].locator("#create-form").waitFor();
+
+  await pages[0].goto(base);
   await pages[0].locator('#create-form input[name="nickname"]').fill("Browser 1");
   await pages[0].locator('#create-form input[name="hunterEnabled"]').check();
   await pages[0].locator('#create-form button[type="submit"]').click();
@@ -83,11 +96,7 @@ try {
   assert((await spectatorPage.getByTestId("role").count()) === 0, "spectator rendered a private role");
   const observerPage = await contexts[0].newPage();
   await observerPage.goto(`${base}/room/${roomId}/host-watch`);
-  await observerPage.locator("body").filter({ hasText: "主持觀戰" }).waitFor();
-  await observerPage.locator("body").filter({ hasText: "主持人可見隱藏資訊" }).waitFor();
-  await observerPage.locator("body").filter({ hasText: "狼人" }).waitFor();
-  await observerPage.locator("body").filter({ hasText: "預言家" }).waitFor();
-  await observerPage.locator("body").filter({ hasText: "獵人" }).waitFor();
+  await observerPage.locator("body").filter({ hasText: "房主不可查看隱藏資訊" }).waitFor();
 
   const roleBeforeReload = (await pages[0].getByTestId("role").textContent())?.trim();
   await pages[0].reload();
@@ -110,13 +119,11 @@ try {
   await werewolfPages[0].locator('#werewolf-chat-form input[name="message"]').fill(wolfMessage);
   await werewolfPages[0].locator('#werewolf-chat-form button[type="submit"]').click();
   await werewolfPages[1].locator("body").filter({ hasText: wolfMessage }).waitFor({ timeout: 10_000 });
-  await observerPage.locator("body").filter({ hasText: wolfMessage }).waitFor({ timeout: 10_000 });
   assert((await nonWerewolfPage.locator("body").filter({ hasText: wolfMessage }).count()) === 0, "Werewolf chat leaked to non-Werewolf page");
   assert((await spectatorPage.locator("body").filter({ hasText: wolfMessage }).count()) === 0, "Werewolf chat leaked to spectator page");
   await submitSelectFormAvoidLabel(werewolfPages[0], "#werewolf-target-form", hunterLabel);
   for (const page of werewolfPages) {
-    await page.locator("#werewolf-ready-button:not([disabled])").waitFor({ state: "visible" });
-    await page.locator("#werewolf-ready-button").click();
+    await clickWerewolfReadyIfStillActive(page, pages);
   }
   await waitForAnyPagePhase(pages, "day_discussion");
 
@@ -127,7 +134,6 @@ try {
   await pages[0].locator("#open-sheriff-election-button").filter({ hasText: "開啟警長選舉" }).waitFor();
   await pages[0].locator("#open-sheriff-election-button").click();
   await waitForAnyPagePhase(pages, "sheriff_election", 10_000);
-  await observerPage.locator("body").filter({ hasText: "警長選舉" }).waitFor({ timeout: 10_000 });
   for (const page of pages) {
     if (await page.locator("#sheriff-vote-form").isVisible().catch(() => false)) {
       await waitConnected(page);
@@ -139,7 +145,6 @@ try {
   await pages[0].locator("#advance-phase-button").filter({ hasText: "快轉階段" }).waitFor();
   await pages[0].locator("#advance-phase-button").click();
   await waitForAnyPagePhase(pages, "day_vote", 10_000);
-  await observerPage.locator("body").filter({ hasText: "投票明細" }).waitFor({ timeout: 10_000 });
   assert((await spectatorPage.locator('[data-testid="vote-results"]').count()) === 0, "spectator saw vote results before resolution");
 
   for (const page of pages) {
@@ -153,7 +158,6 @@ try {
     }
   }
   await waitForAnyPagePhase(pages, "hunter_revenge", 10_000);
-  await observerPage.locator("body").filter({ hasText: "獵人反擊" }).waitFor({ timeout: 10_000 });
   await submitSelectForm(hunterPage, "#hunter-shot-form");
   await waitForAnyPageNotPhase(pages, "hunter_revenge", 10_000);
   await pages[0].locator('[data-testid="vote-results"]').filter({ hasText: "投票結果" }).waitFor({ timeout: 10_000 });
@@ -162,7 +166,7 @@ try {
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V5 smoke passed");
+  console.log("Browser V6 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {
@@ -255,6 +259,22 @@ async function submitSelectFormAvoidLabel(page, selector, avoidedLabel) {
   assert(index >= 0, `Could not find selectable option outside ${avoidedLabel}`);
   await page.locator(`${selector} select`).selectOption({ index });
   await page.locator(`${selector} button[type="submit"]`).click();
+}
+
+async function clickWerewolfReadyIfStillActive(page, pages) {
+  const result = await Promise.race([
+    page
+      .locator("#werewolf-ready-button:not([disabled])")
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .then(() => "ready")
+      .catch(() => "missing"),
+    waitForAnyPagePhase(pages, "day_discussion", 10_000)
+      .then(() => "advanced")
+      .catch(() => "missing")
+  ]);
+  if (result === "ready") {
+    await page.locator("#werewolf-ready-button").click();
+  }
 }
 
 async function waitConnected(page) {

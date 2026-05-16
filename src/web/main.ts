@@ -65,6 +65,7 @@ interface RoomView {
     playerCount: number;
     presetId: string;
     customRoleSetup?: CustomRoleSetup;
+    hostMode: "player_host" | "dedicated_host";
     spectatorsEnabled: boolean;
     locked: boolean;
   };
@@ -227,6 +228,7 @@ interface Session {
   roomId: string;
   seatId: string;
   token: string;
+  hostMode?: "player_host" | "dedicated_host";
 }
 
 const appElement = document.querySelector<HTMLDivElement>("#app");
@@ -240,6 +242,7 @@ let socket: WebSocket | undefined;
 let spectatorSocket: WebSocket | undefined;
 let observerSocket: WebSocket | undefined;
 let timerHandle: number | undefined;
+let roomPollHandle: number | undefined;
 let connectionStatus: "offline" | "connecting" | "connected" | "reconnecting" = session ? "connecting" : "offline";
 let statusMessage = "";
 const roomIdFromPath = location.pathname.match(/^\/room\/([^/]+)$/)?.[1] ?? "";
@@ -283,7 +286,11 @@ function render(): void {
           <div class="panel auth-panel">
             <form id="create-form" class="auth-card primary-auth">
               <h2>建立房間</h2>
-              <label>暱稱<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
+              <label>暱稱<input name="nickname" maxlength="32" autocomplete="nickname" /></label>
+              <div class="role-toggle-grid">
+                <label class="check"><input name="hostMode" type="radio" value="player_host" checked /> 玩家房主（參與遊戲，不可查看隱藏資訊）</label>
+                <label class="check"><input name="hostMode" type="radio" value="dedicated_host" /> 專職主持（不參與遊戲，可查看隱藏資訊）</label>
+              </div>
               <label>玩家人數
                 <select name="customPlayerCount">
                   ${Array.from({ length: 11 }, (_, index) => {
@@ -554,8 +561,8 @@ function renderHostObserver(): void {
     app.innerHTML = `
       <main class="shell narrow auth-screen">
         <section class="panel auth-panel">
-          <h1>主持觀戰</h1>
-          <p>只有房主可以開啟主持觀戰。請先用房主身分進入房間。</p>
+          <h1>主持後台</h1>
+          <p>只有專職主持可以開啟主持後台。請先用專職主持身分進入房間。</p>
           <a class="button-link" href="/room/${escapeHtml(hostObserverRoomId)}">回到房間</a>
         </section>
       </main>
@@ -566,7 +573,7 @@ function renderHostObserver(): void {
     <main class="shell game-screen observer-screen phase-${escapeHtml(String(phase))}">
       <header class="topbar">
         <div>
-          <div class="eyebrow">主持觀戰</div>
+          <div class="eyebrow">主持後台</div>
           <h1>米勒山谷</h1>
           <p>房間 <code data-testid="room-id">${escapeHtml(hostObserverRoomId)}</code></p>
         </div>
@@ -607,7 +614,7 @@ function renderHostObserver(): void {
             <div class="phase-row">
               <div>
                 <h2>${escapeHtml(labelPhase(game?.phase))}</h2>
-                <p>${game ? `第 ${game.round} 輪 · 主持人可見隱藏資訊` : "等待房間開始"}</p>
+                <p>${game ? `第 ${game.round} 輪 · 專職主持可見隱藏資訊` : "等待房間開始"}</p>
                 ${renderSheriffStatus()}
               </div>
               <div>
@@ -655,7 +662,7 @@ function renderObserverPhasePanel(observerRoom: ObserverRoomView | undefined): s
   const observer = observerRoom?.observer;
   const phase = observerRoom?.game?.phase;
   if (!observer || !phase) {
-    return `<p class="muted">等待遊戲開始後顯示主持觀戰資訊。</p>`;
+    return `<p class="muted">等待遊戲開始後顯示主持後台資訊。</p>`;
   }
   if (phase === "night_werewolves") {
     const target = observer.phaseInteraction.werewolfTargetId;
@@ -749,7 +756,7 @@ function renderObserverPhasePanel(observerRoom: ObserverRoomView | undefined): s
 }
 
 function renderStartButton(): string {
-  if (!session || !room || room.status !== "lobby" || session.seatId !== room.hostSeatId) return "";
+  if (!session || !room || room.status !== "lobby" || !isHostSession()) return "";
   const eligibility = room.startEligibility;
   return `
     ${eligibility?.blockedReason ? `<p class="muted">${escapeHtml(labelBlockedReason(eligibility.blockedReason))}</p>` : ""}
@@ -770,6 +777,7 @@ function renderRoomMeta(): string {
     <div class="room-meta">
       <span>${escapeHtml(labelRoomStatus(room.status))}</span>
       <span>${escapeHtml(labelPreset(room.preset?.label, room.settings.playerCount))}</span>
+      <span>${room.settings.hostMode === "dedicated_host" ? "專職主持可查看隱藏資訊" : "玩家房主無隱藏資訊後台"}</span>
       <span>${room.settings.locked ? "已鎖定" : "開放中"}</span>
       <span>${room.settings.spectatorsEnabled ? "可觀戰" : "不可觀戰"}</span>
       ${typeof room.activeSpectators === "number" ? `<span>${room.activeSpectators} 位觀戰者</span>` : ""}
@@ -778,7 +786,8 @@ function renderRoomMeta(): string {
 }
 
 function renderHostTools(): string {
-  if (!session || !room || session.seatId !== room.hostSeatId) return "";
+  if (!session || !room || !isHostSession()) return "";
+  const canOpenHostConsole = room.settings.hostMode === "dedicated_host";
   return `
     <section class="panel tools-panel">
       <h2>房間工具</h2>
@@ -786,7 +795,11 @@ function renderHostTools(): string {
       <div class="tool-row">
         <button id="copy-link-button" class="secondary" type="button">複製連結</button>
         <button id="copy-watch-link-button" class="secondary" type="button">觀戰連結</button>
-        <a class="button-link secondary" href="/room/${escapeHtml(session.roomId)}/host-watch">主持觀戰</a>
+        ${
+          canOpenHostConsole
+            ? `<a class="button-link secondary" href="/room/${escapeHtml(session.roomId)}/host-watch">主持後台</a>`
+            : `<span class="muted">玩家房主不可查看隱藏資訊</span>`
+        }
         <button id="diagnostics-button" class="secondary" type="button">診斷資訊</button>
         <button id="lock-button" class="secondary" type="button">${room.settings.locked ? "解鎖" : "鎖定"}</button>
         <button id="spectators-button" class="secondary" type="button">${room.settings.spectatorsEnabled ? "關閉觀戰" : "開放觀戰"}</button>
@@ -805,14 +818,20 @@ function renderRoleSummary(): string {
 }
 
 function renderSeatHostActions(seat: SeatView): string {
-  if (!session || !room || session.seatId !== room.hostSeatId || room.status !== "lobby" || !seat.nickname) return "";
+  if (!session || !room || !isHostSession() || room.status !== "lobby" || !seat.nickname) return "";
   if (seat.seatId === room.hostSeatId) return "";
   return `
     <div class="seat-actions">
       <button type="button" class="mini secondary" data-kick-seat="${escapeHtml(seat.seatId)}">踢出</button>
-      <button type="button" class="mini secondary" data-transfer-seat="${escapeHtml(seat.seatId)}">轉房主</button>
+      ${room.settings.hostMode === "player_host" ? `<button type="button" class="mini secondary" data-transfer-seat="${escapeHtml(seat.seatId)}">轉房主</button>` : ""}
     </div>
   `;
+}
+
+function isHostSession(): boolean {
+  if (!session || !room) return false;
+  if (room.settings.hostMode === "dedicated_host") return session.hostMode === "dedicated_host";
+  return session.seatId === room.hostSeatId;
 }
 
 function renderPrivatePanel(): string {
@@ -1089,6 +1108,12 @@ function bindAuthForms(): void {
     const form = event.currentTarget as HTMLFormElement;
     const data = new FormData(form);
     const nickname = String(data.get("nickname") ?? "");
+    const hostMode = data.get("hostMode") === "dedicated_host" ? "dedicated_host" : "player_host";
+    if (hostMode === "player_host" && !nickname.trim()) {
+      statusMessage = localizeError("Nickname is required");
+      render();
+      return;
+    }
     const customRoleSetup = readCustomRoleSetup(form);
     const validation = customRoleSetupWarning(customRoleSetup);
     if (validation) {
@@ -1099,10 +1124,21 @@ function bindAuthForms(): void {
       const roomResponse = await fetch("/api/rooms", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ customRoleSetup })
+        body: JSON.stringify({ customRoleSetup, hostMode })
       });
-      const created = (await roomResponse.json()) as { roomId: string; error?: string };
+      const created = (await roomResponse.json()) as { roomId: string; hostToken?: string; error?: string };
       if (!roomResponse.ok) throw new Error(created.error ?? "Create room failed");
+      if (hostMode === "dedicated_host") {
+        if (!created.hostToken) throw new Error("Dedicated host token missing");
+        session = { roomId: created.roomId, seatId: "dedicated-host", token: created.hostToken, hostMode };
+        saveSession(session);
+        room = await fetchRoom(created.roomId);
+        connectionStatus = "connected";
+        statusMessage = "";
+        startRoomPolling();
+        render();
+        return;
+      }
       await joinRoom(created.roomId, nickname);
     });
   });
@@ -1224,6 +1260,21 @@ function recommendedWerewolves(playerCount: number): number {
 
 function bindRoomActions(): void {
   document.querySelector<HTMLButtonElement>("#start-button")?.addEventListener("click", () => {
+    if (session?.hostMode === "dedicated_host") {
+      const hostSession = session;
+      void runUiAction(async () => {
+        const response = await fetch(`/api/rooms/${hostSession.roomId}/start`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ seatId: hostSession.seatId, token: hostSession.token })
+        });
+        const payload = (await response.json()) as RoomView & { error?: string };
+        if (!response.ok) throw new Error(payload.error ?? "Only the host can start");
+        room = payload;
+        render();
+      });
+      return;
+    }
     send({ type: "start_game" });
   });
   document.querySelector<HTMLButtonElement>("#ready-button")?.addEventListener("click", () => {
@@ -1375,6 +1426,14 @@ async function joinRoom(roomId: string, nickname: string): Promise<void> {
 
 async function reconnect(): Promise<void> {
   if (!session) return;
+  if (session.hostMode === "dedicated_host") {
+    connectionStatus = "connected";
+    room = await fetchRoom(session.roomId);
+    privateView = undefined;
+    startRoomPolling();
+    render();
+    return;
+  }
   connectionStatus = "connecting";
   const response = await fetch(`/api/rooms/${session.roomId}/reconnect`, {
     method: "POST",
@@ -1394,6 +1453,13 @@ async function reconnect(): Promise<void> {
   statusMessage = "";
   openSocket();
   render();
+}
+
+async function fetchRoom(roomId: string): Promise<RoomView> {
+  const response = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/state`);
+  const payload = (await response.json()) as RoomView & { error?: string };
+  if (!response.ok) throw new Error(payload.error ?? "Not found");
+  return payload;
 }
 
 function openSocket(): void {
@@ -1707,6 +1773,21 @@ function clearSession(): void {
   privateView = undefined;
   socket = undefined;
   observerSocket = undefined;
+  if (roomPollHandle) window.clearInterval(roomPollHandle);
+  roomPollHandle = undefined;
+}
+
+function startRoomPolling(): void {
+  if (!session || session.hostMode !== "dedicated_host" || roomPollHandle) return;
+  roomPollHandle = window.setInterval(async () => {
+    if (!session || session.hostMode !== "dedicated_host" || hostObserving || watching) return;
+    try {
+      room = await fetchRoom(session.roomId);
+      render();
+    } catch {
+      // Explicit user actions still surface their own errors.
+    }
+  }, 1500);
 }
 
 function nameFor(playerId: string): string {

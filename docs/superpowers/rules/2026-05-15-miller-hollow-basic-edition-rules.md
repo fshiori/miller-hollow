@@ -4,7 +4,7 @@ Date: 2026-05-15
 
 ## Scope
 
-Basic Edition is the current V5 rules scope:
+Basic Edition is the current V6 rules scope:
 
 - Official beginner presets for 8-18 players.
 - `official_basic_8`: 2 Werewolves, 1 Fortune Teller, 5 Ordinary Townsfolk.
@@ -29,13 +29,17 @@ Basic Edition is the current V5 rules scope:
 
 - A room starts with the `official_basic_8` preset by default.
 - The host selects the supported basic preset before creating the room.
+- The host selects the room trust mode before creating the room.
+- Player-host mode is the default: the host occupies a player seat and cannot inspect hidden information.
+- Dedicated-host mode is explicit: the host does not occupy a player seat and may use a visible hidden-information `主持後台`.
 - The selected preset controls seat count, public role summary, and start eligibility.
 - The selected preset is fixed after room creation.
 - Joining assigns the first open seat.
 - Joined players start as not ready.
 - Players may ready or unready while the room is in lobby.
 - The host can start only when every seat in the selected preset is occupied and ready.
-- Host controls cannot inspect roles or override rules.
+- Player-host controls cannot inspect roles or override rules.
+- Dedicated-host controls can inspect hidden information only through the dedicated host console and still cannot override rules.
 
 ## Night
 
