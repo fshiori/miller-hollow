@@ -215,6 +215,39 @@ code {
   border-right: 1px solid rgba(231, 204, 151, 0.18);
 }
 
+.join-auth {
+  align-content: start;
+  background:
+    linear-gradient(180deg, rgba(216, 173, 97, 0.1), transparent 42%),
+    rgba(11, 17, 21, 0.18);
+}
+
+.join-auth-heading {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(231, 204, 151, 0.14);
+}
+
+.join-auth-heading span {
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.join-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.secondary-link {
+  min-width: 76px;
+  background: rgba(244, 236, 216, 0.08);
+  color: var(--ink);
+}
+
 .topbar {
   display: grid;
   grid-template-columns: 1fr auto;

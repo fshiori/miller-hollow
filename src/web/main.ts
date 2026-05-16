@@ -322,12 +322,17 @@ function render(): void {
               </div>
               <button type="submit">建立房間</button>
             </form>
-            <form id="join-form" class="auth-card">
-              <h2>加入房間</h2>
+            <form id="join-form" class="auth-card join-auth">
+              <div class="join-auth-heading">
+                <span>已有房間</span>
+                <h2>加入房間</h2>
+              </div>
               <label>房間 ID<input name="roomId" required value="${escapeHtml(roomIdFromPath)}" /></label>
               <label>暱稱<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
-              <button type="submit">加入房間</button>
-              ${roomIdFromPath ? `<a class="text-link" href="/room/${escapeHtml(roomIdFromPath)}/watch">觀戰</a>` : ""}
+              <div class="join-actions">
+                <button type="submit">加入房間</button>
+                ${roomIdFromPath ? `<a class="button-link secondary-link" href="/room/${escapeHtml(roomIdFromPath)}/watch">觀戰</a>` : ""}
+              </div>
             </form>
           </div>
         </section>
