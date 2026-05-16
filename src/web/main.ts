@@ -285,32 +285,25 @@ function render(): void {
               <h2>建立房間</h2>
               <label>暱稱<input name="nickname" maxlength="32" required autocomplete="nickname" /></label>
               <label>玩家人數
-                <select name="presetId">
-                  <option value="official_roleflow_8">8 人 · 進階角色</option>
+                <select name="customPlayerCount">
                   ${Array.from({ length: 11 }, (_, index) => {
                     const count = index + 8;
-                    return `<option value="official_basic_${count}">${count} 人</option>`;
+                    return `<option value="${count}">${count} 人</option>`;
                   }).join("")}
                 </select>
               </label>
-              <label class="check"><input id="custom-role-toggle" name="customRoleflow" type="checkbox" /> 自定義角色</label>
-              <div id="custom-role-panel" class="custom-role-panel" hidden>
-                <label>自定義人數
-                  <select name="customPlayerCount">
-                    ${Array.from({ length: 11 }, (_, index) => {
-                      const count = index + 8;
-                      return `<option value="${count}">${count} 人</option>`;
-                    }).join("")}
-                  </select>
+              <div id="custom-role-panel" class="custom-role-panel">
+                <label>狼人
+                  <input name="werewolfCount" type="number" min="1" max="4" value="2" />
+                  <span class="field-hint" id="werewolf-recommendation">推薦：2 張</span>
                 </label>
-                <div class="role-count-grid">
-                  <label>狼人<input name="werewolfCount" type="number" min="1" max="4" value="2" /></label>
-                  <label>預言家<input name="seerCount" type="number" min="0" max="1" value="1" /></label>
-                  <label>女巫<input name="witchCount" type="number" min="0" max="1" value="0" /></label>
-                  <label>獵人<input name="hunterCount" type="number" min="0" max="1" value="1" /></label>
-                  <label>盜賊<input name="thiefCount" type="number" min="0" max="1" value="0" /></label>
-                  <label>丘比特<input name="cupidCount" type="number" min="0" max="1" value="0" /></label>
-                  <label>村民<input name="villagerCount" type="number" readonly value="4" /></label>
+                <div class="role-toggle-grid">
+                  <label class="check"><input name="seerEnabled" type="checkbox" checked /> 啟用預言家（推薦必選）</label>
+                  <label class="check"><input name="witchEnabled" type="checkbox" /> 啟用女巫</label>
+                  <label class="check"><input name="hunterEnabled" type="checkbox" /> 啟用獵人</label>
+                  <label class="check"><input name="thiefEnabled" type="checkbox" /> 啟用盜賊</label>
+                  <label class="check"><input name="cupidEnabled" type="checkbox" /> 啟用丘比特</label>
+                  <label class="check"><input name="sheriffEnabled" type="checkbox" checked /> 啟用警長</label>
                 </div>
                 <div id="thief-spare-panel" hidden>
                   <label>盜賊備選 1
@@ -320,7 +313,9 @@ function render(): void {
                     <select name="thiefSpareRole2">${roleChoiceOptions("hunter")}</select>
                   </label>
                 </div>
-                <label class="check"><input name="sheriffEnabled" type="checkbox" checked /> 啟用警長</label>
+                <label>村民
+                  <input name="villagerCount" type="number" readonly value="5" />
+                </label>
                 <p id="custom-role-warning" class="muted"></p>
               </div>
               <button type="submit">建立房間</button>
@@ -1087,20 +1082,17 @@ function bindAuthForms(): void {
     const form = event.currentTarget as HTMLFormElement;
     const data = new FormData(form);
     const nickname = String(data.get("nickname") ?? "");
-    const customRoleSetup = data.get("customRoleflow") === "on" ? readCustomRoleSetup(form) : undefined;
-    if (customRoleSetup) {
-      const validation = customRoleSetupWarning(customRoleSetup);
-      if (validation) {
-        alert(`目前角色配置和規則書建議不一致，請先調整後再建立房間。\n${validation}`);
-        return;
-      }
+    const customRoleSetup = readCustomRoleSetup(form);
+    const validation = customRoleSetupWarning(customRoleSetup);
+    if (validation) {
+      alert(`目前角色配置和規則書建議不一致，請先調整後再建立房間。\n${validation}`);
+      return;
     }
-    const presetId = String(data.get("presetId") ?? "official_basic_8");
     await runUiAction(async () => {
       const roomResponse = await fetch("/api/rooms", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(customRoleSetup ? { customRoleSetup } : { presetId })
+        body: JSON.stringify({ customRoleSetup })
       });
       const created = (await roomResponse.json()) as { roomId: string; error?: string };
       if (!roomResponse.ok) throw new Error(created.error ?? "Create room failed");
@@ -1117,33 +1109,31 @@ function bindAuthForms(): void {
 
 function bindCustomRoleSetup(form: HTMLFormElement | null): void {
   if (!form) return;
-  const toggle = form.querySelector<HTMLInputElement>("#custom-role-toggle");
-  const panel = form.querySelector<HTMLDivElement>("#custom-role-panel");
   const playerCount = form.elements.namedItem("customPlayerCount") as HTMLSelectElement | null;
-  const inputs = ["werewolfCount", "seerCount", "witchCount", "hunterCount", "thiefCount", "cupidCount"].map(
+  const inputs = ["werewolfCount", "seerEnabled", "witchEnabled", "hunterEnabled", "thiefEnabled", "cupidEnabled"].map(
     (name) => form.elements.namedItem(name) as HTMLInputElement | null
   );
   const refresh = () => {
-    if (panel && toggle) panel.hidden = !toggle.checked;
-    if (!toggle?.checked) return;
     const count = Number(playerCount?.value ?? 8);
-    const wolfInput = form.elements.namedItem("werewolfCount") as HTMLInputElement | null;
-    const seerInput = form.elements.namedItem("seerCount") as HTMLInputElement | null;
-    if (document.activeElement === playerCount) {
-      if (wolfInput) wolfInput.value = String(recommendedWerewolves(count));
-      if (seerInput) seerInput.value = "1";
-    }
     updateDerivedVillagers(form);
     const sparePanel = form.querySelector<HTMLDivElement>("#thief-spare-panel");
-    if (sparePanel) sparePanel.hidden = Number((form.elements.namedItem("thiefCount") as HTMLInputElement | null)?.value ?? 0) === 0;
+    if (sparePanel) sparePanel.hidden = !checked(form, "thiefEnabled");
+    const wolfRecommendation = form.querySelector<HTMLSpanElement>("#werewolf-recommendation");
+    if (wolfRecommendation) wolfRecommendation.textContent = `推薦：${recommendedWerewolves(count)} 張`;
     const setup = readCustomRoleSetup(form);
     const warning = customRoleSetupWarning(setup);
     const warningElement = form.querySelector<HTMLParagraphElement>("#custom-role-warning");
     if (warningElement) warningElement.textContent = warning;
   };
-  toggle?.addEventListener("change", refresh);
-  playerCount?.addEventListener("change", refresh);
-  for (const input of inputs) input?.addEventListener("input", refresh);
+  playerCount?.addEventListener("change", () => {
+    const wolfInput = form.elements.namedItem("werewolfCount") as HTMLInputElement | null;
+    if (wolfInput) wolfInput.value = String(recommendedWerewolves(Number(playerCount.value)));
+    refresh();
+  });
+  for (const input of inputs) {
+    input?.addEventListener("input", refresh);
+    input?.addEventListener("change", refresh);
+  }
   refresh();
 }
 
@@ -1152,11 +1142,11 @@ function readCustomRoleSetup(form: HTMLFormElement): CustomRoleSetup {
   const playerCount = value("customPlayerCount");
   const roles = {
     werewolf: value("werewolfCount"),
-    seer: value("seerCount"),
-    witch: value("witchCount"),
-    hunter: value("hunterCount"),
-    thief: value("thiefCount"),
-    cupid: value("cupidCount"),
+    seer: checked(form, "seerEnabled") ? 1 : 0,
+    witch: checked(form, "witchEnabled") ? 1 : 0,
+    hunter: checked(form, "hunterEnabled") ? 1 : 0,
+    thief: checked(form, "thiefEnabled") ? 1 : 0,
+    cupid: checked(form, "cupidEnabled") ? 1 : 0,
     villager: Math.max(0, value("villagerCount"))
   };
   const spareRoles =
@@ -1183,12 +1173,16 @@ function updateDerivedVillagers(form: HTMLFormElement): void {
   const villagers =
     value("customPlayerCount") -
     value("werewolfCount") -
-    value("seerCount") -
-    value("witchCount") -
-    value("hunterCount") -
-    value("thiefCount") -
-    value("cupidCount");
+    (checked(form, "seerEnabled") ? 1 : 0) -
+    (checked(form, "witchEnabled") ? 1 : 0) -
+    (checked(form, "hunterEnabled") ? 1 : 0) -
+    (checked(form, "thiefEnabled") ? 1 : 0) -
+    (checked(form, "cupidEnabled") ? 1 : 0);
   villagerInput.value = String(Math.max(0, villagers));
+}
+
+function checked(form: HTMLFormElement, name: string): boolean {
+  return (form.elements.namedItem(name) as HTMLInputElement | null)?.checked ?? false;
 }
 
 function roleChoiceOptions(selected = "villager"): string {
