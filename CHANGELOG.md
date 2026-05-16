@@ -1,10 +1,21 @@
 # Changelog
 
-## Unreleased
+## 0.6.1 - Official Rules Cleanup
+
+### Added
+
+- Official rulebook audit for implemented roles, terminology, phase flow, and online adaptations.
+- Focused tests for Thief not being dealt and canonical Traditional Chinese role terminology.
 
 ### Fixed
 
 - Thief setup now follows the rulebook model: enabling Thief adds two extra Ordinary Townsfolk cards, the two undealt cards become Thief's hidden choices, and double-Werewolf spare cards force Thief to choose Werewolf.
+- Witch can now use the poison potion on themselves, matching the rulebook.
+
+### Changed
+
+- Player-facing Ordinary Townsfolk / Villager copy now uses `普通村民`.
+- App version reports `0.6.1`.
 
 ## 0.6.0 - Host Trust Modes
 

@@ -6,6 +6,8 @@ Date: 2026-05-15
 
 Basic Edition is the current V6 rules scope:
 
+For the V6.1 official-rules audit, see `docs/superpowers/rules/2026-05-16-miller-hollow-official-rules-audit.md`.
+
 - Official beginner presets for 8-18 players.
 - `official_basic_8`: 2 Werewolves, 1 Fortune Teller, 5 Ordinary Townsfolk.
 - `official_basic_9`: 2 Werewolves, 1 Fortune Teller, 6 Ordinary Townsfolk.
@@ -52,7 +54,7 @@ Basic Edition is the current V6 rules scope:
 - App-basic presets include a Witch.
 - Witch may save the Werewolf target once.
 - Witch may poison one living target once.
-- Witch cannot poison themselves.
+- Witch may use either potion on themselves.
 - Official beginner presets have no Witch, so night deaths resolve after Fortune Teller action.
 - App-basic night deaths resolve after Witch action.
 - V5 roleflow nights use official-style order: Fortune Teller first, then Werewolves, then Witch if present.

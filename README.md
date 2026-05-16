@@ -6,6 +6,8 @@ The player-facing browser UI is Traditional Chinese. Public API fields, internal
 
 This is an unofficial fan implementation and is not affiliated with the original game publisher or rights holders.
 
+V6.1 keeps internal ids stable while aligning player-facing terminology and implemented rules with the official rulebook. The audit lives in `docs/superpowers/rules/2026-05-16-miller-hollow-official-rules-audit.md`.
+
 ## Commands
 
 - `npm run dev` starts Wrangler locally at `http://localhost:8787`.
@@ -44,6 +46,8 @@ The app-basic compatibility presets remain available through the engine/API for 
 - `app_basic_12`: 3 Werewolves, 1 Seer, 1 Witch, 7 Ordinary Villagers.
 
 Legacy `basic_8` through `basic_12` ids remain accepted as aliases for the app-basic presets.
+
+Internal ids intentionally remain stable for API compatibility. In player-facing Traditional Chinese, `villager` / Ordinary Townsfolk is shown as `普通村民`, `seer` / Fortune Teller as `預言家`, and `sheriff` / Captain as `警長`.
 
 The V5 roleflow preset is available separately while the beginner presets remain stable:
 

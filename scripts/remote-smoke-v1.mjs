@@ -101,7 +101,7 @@ if (roleflow) {
   }, "night_seer");
 }
 
-console.log(`Remote V5 smoke passed for ${base} with ${presetId}`);
+console.log(`Remote V6.1 smoke passed for ${base} with ${presetId}`);
 
 async function get(path) {
   const response = await fetch(`${base}${path}`);

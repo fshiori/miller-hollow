@@ -24,6 +24,10 @@ const identityRandom: RandomSource = {
   nextInt: (maxExclusive) => maxExclusive - 1
 };
 
+const thiefUndealtRandom: RandomSource = {
+  nextInt: (maxExclusive) => (maxExclusive === 10 ? 7 : maxExclusive - 1)
+};
+
 function players(count = 8): GamePlayer[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `p${index + 1}`,
@@ -175,6 +179,21 @@ describe("Miller Hollow V1 engine", () => {
     game = applyCommand(game, { type: "submit_thief_choice", actorId: thief, role: "villager" }).state;
     expect(game.roles[thief]).toBe("villager");
     expect(game.thief?.chosenRole).toBe("villager");
+    expect(game.phase).toBe("night_seer");
+  });
+
+  it("skips Thief choice when the Thief card is not dealt to a player", () => {
+    const preset = createCustomRoleflowPreset({
+      playerCount: 8,
+      roles: { werewolf: 2, seer: 1, thief: 1, hunter: 1, villager: 3 },
+      sheriffEnabled: true,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true
+    });
+    const game = createGame(players(), thiefUndealtRandom, preset);
+
+    expect(Object.values(game.roles)).not.toContain("thief");
+    expect(game.thief).toBeUndefined();
     expect(game.phase).toBe("night_seer");
   });
 
@@ -400,18 +419,20 @@ describe("Miller Hollow V1 engine", () => {
     expect(game.phase).toBe("night_werewolves");
   });
 
-  it("rejects Witch self-poison in V1", () => {
+  it("allows Witch to poison themselves", () => {
     let game = fixedRoleGame();
     game = applyCommand(game, { type: "submit_werewolf_target", actorId: "p1", targetId: "p5" }).state;
     game = applyCommand(game, { type: "submit_seer_target", actorId: "p3" }).state;
 
-    expect(() =>
-      applyCommand(game, {
-        type: "submit_witch_action",
-        actorId: "p4",
-        poisonTargetId: "p4"
-      })
-    ).toThrow("Witch cannot poison themselves");
+    expect(toPrivatePlayerView(game, "p4").legalTargets).toContain("p4");
+    game = applyCommand(game, {
+      type: "submit_witch_action",
+      actorId: "p4",
+      poisonTargetId: "p4"
+    }).state;
+
+    expect(game.alive.p4).toBe(false);
+    expect(game.nightActions.witchPoisonTarget).toBe("p4");
   });
 
   it("detects Village victory when all Werewolves are eliminated", () => {

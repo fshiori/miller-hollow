@@ -2,6 +2,8 @@
 
 Date: 2026-05-15
 
+For V6.1 rulebook alignment decisions, see `docs/superpowers/rules/2026-05-16-miller-hollow-official-rules-audit.md`.
+
 | Phase | Public Label | Private Actors | Public Timeout Behavior | Next Phase |
 | --- | --- | --- | --- | --- |
 | `night_werewolves` | Werewolves | Living Werewolves | Legacy/app-basic: valid proposal or random legal target. V5 roleflow: no kill when no target is selected. | Legacy: `night_seer`; roleflow: `night_witch` if present, otherwise `day_discussion` or reaction/ended |

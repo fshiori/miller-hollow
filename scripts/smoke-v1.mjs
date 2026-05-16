@@ -280,7 +280,7 @@ try {
   assert(latestVoteResult.tally[target] === votingPlayers.length, "vote result tally did not include deliberate votes");
   const spectatorState = await spectatorStateView(room.roomId);
   assert((spectatorState.game.voteResults ?? []).length >= 1, "spectator state did not include vote results after vote resolution");
-  console.log("V5 smoke passed");
+  console.log("V6.1 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");

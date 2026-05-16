@@ -623,6 +623,41 @@ Release:
 
 - Commit/tag `v0.6.0`.
 
+## 0.6.1 - V6.1 Official Rules Cleanup
+
+Status:
+
+- Completed locally.
+
+Completed:
+
+- Added the official rules audit at `docs/superpowers/rules/2026-05-16-miller-hollow-official-rules-audit.md`.
+- Classified implemented-role behavior as rulebook match, bug fix, or intentional online adaptation.
+- Kept internal ids stable while canonicalizing player-facing Traditional Chinese terminology.
+- Changed Ordinary Townsfolk / Villager player-facing copy to `普通村民`.
+- Fixed Witch poison behavior so the Witch may poison themselves, matching the rulebook.
+- Confirmed and documented Thief rulebook behavior:
+  - add two extra Ordinary Townsfolk cards before shuffle.
+  - use the two undealt cards as Thief choices.
+  - force Werewolf when both spare cards are Werewolves.
+  - skip `thief_choice` if Thief is not dealt.
+- Added focused engine and copy tests for V6.1 rule details.
+- Updated README, changelog, basic rules, phase table, and V6.1 design/implementation docs.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+
+Release:
+
+- Commit/tag `v0.6.1`.
+
 ## Planned Next Versions
 
 ### Later

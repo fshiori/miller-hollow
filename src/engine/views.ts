@@ -129,7 +129,7 @@ export function toPrivatePlayerView(state: GameState, playerId: PlayerId): Priva
   const legalTargets = state.players
     .filter((player) => state.alive[player.id])
     .filter((player) => {
-      if (state.phase !== "sheriff_election" && state.phase !== "night_cupid" && player.id === playerId) {
+      if (state.phase !== "sheriff_election" && state.phase !== "night_cupid" && state.phase !== "night_witch" && player.id === playerId) {
         return false;
       }
       if (state.phase === "night_cupid") {

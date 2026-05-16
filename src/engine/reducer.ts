@@ -350,9 +350,6 @@ function submitWitchAction(
     if (!state.witchPoisonAvailable) {
       throw new Error("Witch poison has already been used");
     }
-    if (poisonTargetId === actorId) {
-      throw new Error("Witch cannot poison themselves in V1");
-    }
     assertLivingPlayer(state, poisonTargetId);
   }
 

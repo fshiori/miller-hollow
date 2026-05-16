@@ -6,7 +6,7 @@ const roleLabels: Record<string, string> = {
   werewolf: "狼人",
   seer: "預言家",
   witch: "女巫",
-  villager: "村民",
+  villager: "普通村民",
   hunter: "獵人",
   cupid: "丘比特",
   thief: "盜賊",
@@ -16,8 +16,8 @@ const roleLabels: Record<string, string> = {
   Seer: "預言家",
   Werewolf: "狼人",
   Witch: "女巫",
-  "Ordinary Townsfolk": "村民",
-  Villager: "村民"
+  "Ordinary Townsfolk": "普通村民",
+  Villager: "普通村民"
 };
 
 const teamLabels: Record<string, string> = {
@@ -175,7 +175,6 @@ const errorLabels: Record<string, string> = {
   "No living Witch can use a potion": "沒有存活的女巫可以使用藥水。",
   "Invalid Witch save": "女巫救人目標無效。",
   "Witch poison has already been used": "女巫已經使用過毒藥。",
-  "Witch cannot poison themselves in V1": "女巫不能毒殺自己。",
   "No living players": "沒有存活玩家。",
   "Unknown player": "未知玩家。",
   "Only playing games can advance phases": "只有進行中的遊戲可以快轉階段。",

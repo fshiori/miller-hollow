@@ -37,7 +37,7 @@ V1 potions:
 
 - The save potion may save only the current Werewolf victim and can be used once.
 - The poison potion may target one other living player and can be used once.
-- The Witch cannot poison themselves in V1.
+- Historical V1 decision: the Witch could not poison themselves. Superseded in V6.1 to match the rulebook: the Witch may use either potion on themselves.
 - The Witch may save and poison in the same night if both potions are available.
 
 If the Witch does not act before timeout, no potion is used.
