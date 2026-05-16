@@ -313,9 +313,11 @@ function render(): void {
                     <select name="thiefSpareRole2">${roleChoiceOptions("hunter")}</select>
                   </label>
                 </div>
-                <label>村民
-                  <input name="villagerCount" type="number" readonly value="5" />
-                </label>
+                <div class="role-derived-count">
+                  <span>村民</span>
+                  <strong id="villager-count-display">5 張</strong>
+                  <input name="villagerCount" type="hidden" value="5" />
+                </div>
                 <p id="custom-role-warning" class="muted"></p>
               </div>
               <button type="submit">建立房間</button>
@@ -1169,6 +1171,7 @@ function readCustomRoleSetup(form: HTMLFormElement): CustomRoleSetup {
 function updateDerivedVillagers(form: HTMLFormElement): void {
   const value = (name: string) => Number((form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null)?.value ?? 0);
   const villagerInput = form.elements.namedItem("villagerCount") as HTMLInputElement | null;
+  const villagerDisplay = form.querySelector<HTMLElement>("#villager-count-display");
   if (!villagerInput) return;
   const villagers =
     value("customPlayerCount") -
@@ -1178,7 +1181,9 @@ function updateDerivedVillagers(form: HTMLFormElement): void {
     (checked(form, "hunterEnabled") ? 1 : 0) -
     (checked(form, "thiefEnabled") ? 1 : 0) -
     (checked(form, "cupidEnabled") ? 1 : 0);
-  villagerInput.value = String(Math.max(0, villagers));
+  const count = Math.max(0, villagers);
+  villagerInput.value = String(count);
+  if (villagerDisplay) villagerDisplay.textContent = `${count} 張`;
 }
 
 function checked(form: HTMLFormElement, name: string): boolean {
