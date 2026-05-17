@@ -167,7 +167,7 @@ try {
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V6.1 smoke passed");
+  console.log("Browser V6.2 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {

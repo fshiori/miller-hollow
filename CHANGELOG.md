@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.2 - Hosted Game Flow
+
+### Added
+
+- Host controls to fill empty lobby seats with AI test players and trigger AI actions during live games.
+- AI smoke coverage for a dedicated-host room that reaches discussion, voting, and public vote reveal.
+- System log follow mode with a jump-to-latest control when the user scrolls up.
+- V6.2 design and implementation documents.
+
+### Changed
+
+- Host tools now expose phase-oriented controls for AI progression alongside discussion/vote fast-forward.
+- API smoke now covers AI-driven hosted observation in addition to manual player flows.
+- App version reports `0.6.2`.
+
 ## 0.6.1 - Official Rules Cleanup
 
 ### Added

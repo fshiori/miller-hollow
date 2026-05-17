@@ -4,6 +4,39 @@ Date: 2026-05-15
 
 This document is the fast human-readable version history. `CHANGELOG.md` remains the package-level changelog; this file summarizes what each completed milestone means in product terms.
 
+## 0.6.2 - V6.2 Hosted Game Flow
+
+Status:
+
+- Implemented locally.
+- Focuses on making a hosted online game easier to run and observe.
+- No new roles.
+
+Completed:
+
+- Added V6.2 design and implementation documents.
+- Added host control to fill empty lobby seats with AI test players.
+- Added host-triggered AI action step for test/demo rooms.
+- AI can perform legal role actions, day discussion messages, day ready, voting, Hunter reaction, and Sheriff succession.
+- Day discussion readiness remains public coordination state and resets by phase.
+- Live vote maps remain hidden from normal players and spectators until vote resolution.
+- Resolved vote results remain public after voting resolves.
+- Werewolf night chat remains private to living Werewolves and the dedicated-host console.
+- System and chat logs now follow the latest message by default without forcing scroll when the user scrolls up.
+- Added jump-to-latest UI for paused log follow.
+- API smoke now covers a dedicated-host AI room from lobby fill through discussion, voting, and public vote reveal.
+- Updated README, changelog, hidden-info matrix, view contract, and phase table.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+
 ## v0.1.0 - V1 Playable Core
 
 First working 8-player online game.

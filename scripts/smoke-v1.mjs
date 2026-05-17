@@ -89,6 +89,8 @@ try {
   console.log("Roleflow smoke passed");
   await smokeDedicatedHostObserver();
   console.log("Dedicated host smoke passed");
+  await smokeDedicatedHostAiFlow();
+  console.log("Dedicated host AI smoke passed");
   const room = await post("/api/rooms", { presetId: "app_basic_8" });
   const joined = [];
   const spectatorTicket = await post(`/api/rooms/${room.roomId}/spectator-ticket`);
@@ -280,7 +282,7 @@ try {
   assert(latestVoteResult.tally[target] === votingPlayers.length, "vote result tally did not include deliberate votes");
   const spectatorState = await spectatorStateView(room.roomId);
   assert((spectatorState.game.voteResults ?? []).length >= 1, "spectator state did not include vote results after vote resolution");
-  console.log("V6.1 smoke passed");
+  console.log("V6.2 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");
@@ -419,6 +421,38 @@ async function smokeDedicatedHostObserver() {
   assert(!JSON.stringify(observer).includes("playerTokenHash"), "dedicated observer leaked token hashes");
   assert(!JSON.stringify(observer).includes("socketTickets"), "dedicated observer leaked socket tickets");
   await expectObserverSocket(room.roomId, { seatId: "dedicated-host", token: room.hostToken });
+}
+
+async function smokeDedicatedHostAiFlow() {
+  const room = await post("/api/rooms", {
+    hostMode: "dedicated_host",
+    presetId: "official_roleflow_8"
+  });
+  assert(room.hostToken, "AI flow dedicated host token was not returned");
+  await post(`/api/rooms/${room.roomId}/host/add-ai-players`, { seatId: "dedicated-host", token: room.hostToken });
+  let state = await get(`/api/rooms/${room.roomId}/state`);
+  assert(state.seats.every((seat) => seat.nickname && seat.controller === "ai" && seat.ready), "AI players did not fill ready seats");
+  assert(state.startEligibility?.canStart === true, "AI room was not startable");
+  await post(`/api/rooms/${room.roomId}/start`, { seatId: "dedicated-host", token: room.hostToken });
+  state = await get(`/api/rooms/${room.roomId}/state`);
+  assert(!publicStateHasRoles(state), "AI public state leaked roles before endgame");
+
+  let sawDiscussion = false;
+  let sawVote = false;
+  for (let step = 0; step < 12; step += 1) {
+    state = await post(`/api/rooms/${room.roomId}/host/ai-step`, { seatId: "dedicated-host", token: room.hostToken });
+    sawDiscussion ||= state.game?.phase === "day_discussion";
+    sawVote ||= state.game?.phase === "day_vote";
+    if ((state.game?.voteResults ?? []).length > 0) break;
+  }
+
+  state = await get(`/api/rooms/${room.roomId}/state`);
+  assert(sawDiscussion, "AI flow did not reach day discussion");
+  assert(sawVote || (state.game?.voteResults ?? []).length > 0, "AI flow did not reach voting");
+  assert((state.game?.voteResults ?? []).length > 0, "AI flow did not reveal a resolved vote");
+  assert(state.chatMessages.some((message) => message.message.includes("準備好進入投票")), "AI flow did not emit day discussion chat");
+  const observer = await observerState(room.roomId, { seatId: "dedicated-host", token: room.hostToken });
+  assert(observer.observer?.players?.every((player) => player.role), "AI observer did not reveal roles to dedicated host");
 }
 
 async function post(path, body) {

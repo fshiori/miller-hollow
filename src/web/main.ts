@@ -244,6 +244,7 @@ let timerHandle: number | undefined;
 let roomPollHandle: number | undefined;
 let connectionStatus: "offline" | "connecting" | "connected" | "reconnecting" = session ? "connecting" : "offline";
 let statusMessage = "";
+let autoFollowLogs = true;
 const roomIdFromPath = location.pathname.match(/^\/room\/([^/]+)$/)?.[1] ?? "";
 const spectatorRoomId = location.pathname.match(/^\/room\/([^/]+)\/watch$/)?.[1] ?? "";
 const hostObserverRoomId = location.pathname.match(/^\/room\/([^/]+)\/host-watch$/)?.[1] ?? "";
@@ -451,12 +452,14 @@ function render(): void {
                 .map((event) => `<p>${escapeHtml(localizeEvent(event.message))}</p>`)
                 .join("") || `<p class="muted">等待玩家加入。</p>`}
             </div>
+            ${renderJumpLatestButton()}
           </section>
         </section>
       </section>
     </main>
   `;
   bindRoomActions();
+  bindLogControls();
   startTimerLoop();
   scrollFollowLogs();
 }
@@ -534,11 +537,13 @@ function renderSpectator(): void {
                 .map((event) => `<p>${escapeHtml(localizeEvent(event.message))}</p>`)
                 .join("") || `<p class="muted">等待玩家加入。</p>`}
             </div>
+            ${renderJumpLatestButton()}
           </section>
         </section>
       </section>
     </main>
   `;
+  bindLogControls();
   startTimerLoop();
   scrollFollowLogs();
 }
@@ -640,12 +645,14 @@ function renderHostObserver(): void {
                 .map((event) => `<p>${escapeHtml(localizeEvent(event.message))}</p>`)
                 .join("") || `<p class="muted">等待玩家加入。</p>`}
             </div>
+            ${renderJumpLatestButton()}
           </section>
         </section>
       </section>
     </main>
   `;
   bindHostObserverActions();
+  bindLogControls();
   startTimerLoop();
   scrollFollowLogs();
 }
@@ -795,7 +802,9 @@ function renderHostTools(): string {
         <button id="diagnostics-button" class="secondary" type="button">診斷資訊</button>
         <button id="lock-button" class="secondary" type="button">${room.settings.locked ? "解鎖" : "鎖定"}</button>
         <button id="spectators-button" class="secondary" type="button">${room.settings.spectatorsEnabled ? "關閉觀戰" : "開放觀戰"}</button>
+        ${room.status === "lobby" && room.seats.some((seat) => !seat.nickname) ? `<button id="add-ai-players-button" class="secondary" type="button">補滿 AI</button>` : ""}
         ${room.status === "playing" && room.game?.sheriff?.electionAvailable ? `<button id="open-sheriff-election-button" class="secondary" type="button">開啟警長選舉</button>` : ""}
+        ${room.status === "playing" && room.seats.some((seat) => seat.controller === "ai") ? `<button id="ai-step-button" class="secondary" type="button">執行 AI 行動</button>` : ""}
         ${room.status === "playing" && room.game?.phase !== "ended" ? `<button id="advance-phase-button" class="secondary" type="button">快轉階段</button>` : ""}
       </div>
       ${room.status !== "playing" ? `<button id="reset-button" type="button">重設大廳</button>` : ""}
@@ -1062,6 +1071,10 @@ function renderVoteResultsPanel(): string {
   `;
 }
 
+function renderJumpLatestButton(): string {
+  return autoFollowLogs ? "" : `<button class="mini secondary jump-latest-button" type="button">跳到最新</button>`;
+}
+
 function actionStateLabel(view: PrivateView): string {
   if (view.actionState.submitted) return "已提交。";
   if (view.actionState.waitingFor) return `等待${labelActionState(view.actionState.waitingFor)}。`;
@@ -1284,6 +1297,12 @@ function bindRoomActions(): void {
   document.querySelector<HTMLButtonElement>("#open-sheriff-election-button")?.addEventListener("click", () => {
     void hostControl("open-sheriff-election");
   });
+  document.querySelector<HTMLButtonElement>("#add-ai-players-button")?.addEventListener("click", () => {
+    void hostControl("add-ai-players");
+  });
+  document.querySelector<HTMLButtonElement>("#ai-step-button")?.addEventListener("click", () => {
+    void hostControl("ai-step");
+  });
   document.querySelector<HTMLButtonElement>("#advance-phase-button")?.addEventListener("click", () => {
     void hostControl("advance-phase");
   });
@@ -1383,6 +1402,25 @@ function bindRoomActions(): void {
 function bindHostObserverActions(): void {
   document.querySelector<HTMLButtonElement>("#observer-copy-watch-link-button")?.addEventListener("click", () => {
     void copyWatchLinkForRoom(hostObserverRoomId);
+  });
+}
+
+function bindLogControls(): void {
+  document.querySelectorAll<HTMLElement>(".chat-log, .event-log").forEach((element) => {
+    element.addEventListener(
+      "scroll",
+      () => {
+        autoFollowLogs = isNearBottom(element);
+      },
+      { passive: true }
+    );
+  });
+  document.querySelectorAll<HTMLButtonElement>(".jump-latest-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      autoFollowLogs = true;
+      scrollFollowLogs(true);
+      renderSoon();
+    });
   });
 }
 
@@ -1791,10 +1829,15 @@ function startTimerLoop(): void {
   }, 500);
 }
 
-function scrollFollowLogs(): void {
+function scrollFollowLogs(force = false): void {
   window.requestAnimationFrame(() => {
+    if (!force && !autoFollowLogs) return;
     document.querySelectorAll<HTMLElement>(".chat-log, .event-log").forEach((element) => {
       element.scrollTop = element.scrollHeight;
     });
   });
+}
+
+function isNearBottom(element: HTMLElement): boolean {
+  return element.scrollHeight - element.scrollTop - element.clientHeight < 36;
 }

@@ -5,7 +5,7 @@ import type { HostMode } from "./room-state";
 
 export { RoomObject };
 
-const APP_VERSION = "0.6.1";
+const APP_VERSION = "0.6.2";
 const CREATE_ROOM_LIMIT = { limit: 10, windowMs: 60_000 };
 const SMOKE_CREATE_ROOM_LIMIT = { limit: 50, windowMs: 60_000 };
 const createRoomBuckets = new Map<string, RateBucket>();
@@ -145,6 +145,8 @@ function isRoomActionAllowed(action: string): boolean {
     "host/transfer",
     "host/advance-phase",
     "host/open-sheriff-election",
+    "host/add-ai-players",
+    "host/ai-step",
     "host/reset-lobby"
   ].includes(action);
 }

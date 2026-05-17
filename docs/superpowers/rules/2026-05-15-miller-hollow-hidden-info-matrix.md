@@ -13,6 +13,8 @@ Date: 2026-05-15
 | Werewolf private chat | No | Living Werewolves during Werewolf night | No | Only if host is living Werewolf | Yes | No |
 | Werewolf ready ids | Aggregate count only | Living Werewolves during Werewolf night | Aggregate count only | Only if host is living Werewolf | Yes | No |
 | Day ready ids | Yes during day discussion | Yes during day discussion | Yes during day discussion | Yes during day discussion | Yes | No |
+| AI player controller flag | Yes | Yes | Yes | Yes | Yes | Yes |
+| AI action decision process | No | No | No | No | No; only resulting state | No |
 | Live vote map during active vote | No | Own submitted state only | No | Own submitted state only | Yes | No |
 | Sheriff election live vote map | No | Own submitted state only | No | Own submitted state only | Yes | No |
 | Current Sheriff holder | Yes | Yes | Yes | Yes | Yes | Yes |

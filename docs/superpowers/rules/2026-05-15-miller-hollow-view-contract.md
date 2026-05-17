@@ -14,6 +14,7 @@ May include:
 - Public Sheriff holder and Sheriff election availability.
 - Resolved vote results with vote weights after day vote resolution.
 - Phase interaction aggregates, such as Werewolf confirmation counts and day ready counts.
+- Seat controller labels, including AI test-player seats.
 - Public chat messages.
 - Start eligibility.
 - Endgame reveal only after `phase === "ended"`.
@@ -53,6 +54,8 @@ May include:
 - Werewolf private chat, proposed target, and Werewolf ready seat ids only for living Werewolves during Werewolf night.
 - Day ready seat ids and counts for living players during day discussion.
 
+AI-controlled seats use the same public and private view contracts as human seats. The server may submit legal actions for AI seats through host-authenticated test controls, but that command must not add hidden role data to public, spectator, or player-host views.
+
 Must not include another player's private-only view.
 
 ## Spectator View
@@ -78,6 +81,7 @@ May include:
 - Werewolf private chat.
 - Werewolf proposed target and ready seat ids.
 - Day ready seat ids.
+- AI seat controller labels.
 - Vote map, missing voters, and vote tally during day vote.
 - Sheriff holder, election votes, missing election voters, and succession state.
 - Pending Hunter revenge state.

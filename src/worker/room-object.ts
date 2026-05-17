@@ -314,6 +314,11 @@ export class RoomObject implements DurableObject {
         }
         room.game = applyCommand(room.game, { type: "open_sheriff_election", actorId: host.seatId }).state;
         this.afterGameMutation(room);
+      } else if (action === "add-ai-players") {
+        this.assertLobby(room);
+        this.addAiPlayers(room);
+      } else if (action === "ai-step") {
+        this.runAiStep(room);
       } else if (action === "reset-lobby") {
         if (room.status === "playing") {
           return json({ error: "Playing games cannot be reset" }, 409);
@@ -810,6 +815,32 @@ export class RoomObject implements DurableObject {
     room.hostSeatId = seat.seatId;
   }
 
+  private addAiPlayers(room: RoomState): void {
+    let added = 0;
+    const existingAiNames = new Set(room.seats.filter((seat) => seat.controller === "ai" && seat.nickname).map((seat) => seat.nickname));
+    for (const seat of room.seats) {
+      if (seat.nickname) continue;
+      added += 1;
+      let nickname = `AI ${added}`;
+      while (existingAiNames.has(nickname)) {
+        added += 1;
+        nickname = `AI ${added}`;
+      }
+      existingAiNames.add(nickname);
+      seat.nickname = nickname;
+      seat.controller = "ai";
+      seat.connectionStatus = "disconnected";
+      seat.lastSeenAt = Date.now();
+      seat.ready = true;
+      seat.readyAt = Date.now();
+      delete seat.playerTokenHash;
+    }
+    if (!added) {
+      throw new Error("No empty seats for AI players");
+    }
+    room.updatedAt = Date.now();
+  }
+
   private resetLobby(room: RoomState): void {
     room.status = "lobby";
     delete room.game;
@@ -984,6 +1015,152 @@ export class RoomObject implements DurableObject {
     }
     await this.saveRoom(room);
     await this.broadcastRoom(room);
+  }
+
+  private runAiStep(room: RoomState): void {
+    if (!room.game || room.status !== "playing") {
+      throw new Error("Game has not started");
+    }
+    const aiSeatIds = room.seats.filter((seat) => seat.controller === "ai" && seat.nickname).map((seat) => seat.seatId);
+    if (!aiSeatIds.length) {
+      throw new Error("No AI players in this room");
+    }
+    const beforePhase = room.game.phase;
+    const beforeRound = room.game.round;
+    let acted = 0;
+
+    if (room.game.phase === "day_discussion") {
+      for (const seatId of aiSeatIds) {
+        if (!room.game?.alive[seatId]) continue;
+        if (!room.chatMessages.some((message) => message.seatId === seatId && message.id.startsWith(`ai-${beforeRound}-`))) {
+          this.addAiChat(room, seatId);
+          acted += 1;
+        }
+        const readySet = new Set(room.phaseInteraction.dayReadySeatIds);
+        if (!readySet.has(seatId)) {
+          readySet.add(seatId);
+          room.phaseInteraction.dayReadySeatIds = [...readySet];
+          acted += 1;
+        }
+      }
+      if (this.tryAdvanceDayDiscussion(room)) {
+        acted += 1;
+        this.afterGameMutation(room);
+      } else {
+        room.updatedAt = Date.now();
+      }
+      this.logRoomEvent(room, "ai_step", { phase: beforePhase, acted });
+      return;
+    }
+
+    if (room.game.phase === "night_werewolves") {
+      const aiWerewolves = aiSeatIds.filter((seatId) => room.game?.alive[seatId] && room.game.roles[seatId] === "werewolf");
+      if (aiWerewolves.length) {
+        if (!room.phaseInteraction.werewolfTargetId) {
+          const targetId = this.firstLegalAiTarget(room, aiWerewolves[0] as string);
+          if (targetId) {
+            room.phaseInteraction.werewolfTargetId = targetId;
+            acted += 1;
+          }
+        }
+        const readySet = new Set(room.phaseInteraction.werewolfReadySeatIds);
+        for (const seatId of aiWerewolves) {
+          if (!readySet.has(seatId)) {
+            readySet.add(seatId);
+            acted += 1;
+          }
+        }
+        room.phaseInteraction.werewolfReadySeatIds = [...readySet];
+        if (this.tryAdvanceWerewolves(room)) {
+          acted += 1;
+          this.afterGameMutation(room);
+        } else {
+          room.updatedAt = Date.now();
+        }
+        this.logRoomEvent(room, "ai_step", { phase: beforePhase, acted });
+        return;
+      }
+    }
+
+    for (const seatId of aiSeatIds) {
+      if (!room.game || room.game.phase !== beforePhase) break;
+      const command = this.aiCommandFor(room, seatId);
+      if (!command) continue;
+      room.game = applyCommand(room.game, command).state;
+      if (command.type === "submit_vote" || command.type === "submit_sheriff_vote") {
+        this.resolveVoteIfComplete(room);
+      }
+      acted += 1;
+    }
+
+    if (!acted) {
+      throw new Error("No AI action available for this phase");
+    }
+    this.afterGameMutation(room);
+    this.logRoomEvent(room, "ai_step", { phase: beforePhase, acted });
+  }
+
+  private addAiChat(room: RoomState, seatId: string): void {
+    if (!room.game) return;
+    const seat = room.seats.find((candidate) => candidate.seatId === seatId);
+    room.chatMessages.push({
+      id: `ai-${room.game.round}-${Date.now()}-${room.chatMessages.length}`,
+      seatId,
+      nickname: seat?.nickname ?? seatId,
+      message: this.aiDiscussionLine(room, seatId),
+      createdAt: Date.now()
+    });
+  }
+
+  private aiDiscussionLine(room: RoomState, seatId: string): string {
+    const seat = room.seats.find((candidate) => candidate.seatId === seatId);
+    const name = seat?.nickname ?? "AI";
+    return `${name}：我準備好進入投票。`;
+  }
+
+  private aiCommandFor(room: RoomState, seatId: string): GameCommand | undefined {
+    if (!room.game || !room.game.alive[seatId]) {
+      const reaction = room.game?.pendingReactions[0];
+      if (reaction?.type === "hunter_revenge" && reaction.hunterId === seatId) {
+        const targetId = this.firstLegalAiTarget(room, seatId);
+        return { type: "submit_hunter_shot", actorId: seatId, ...(targetId ? { targetId } : {}) };
+      }
+      if (reaction?.type === "sheriff_succession" && reaction.fromId === seatId) {
+        const targetId = this.firstLegalAiTarget(room, seatId);
+        return { type: "submit_sheriff_successor", actorId: seatId, ...(targetId ? { targetId } : {}) };
+      }
+      return undefined;
+    }
+    const view = toPrivatePlayerView(room.game, seatId);
+    if (view.legalActions.includes("submit_thief_choice") && view.legalRoleChoices?.[0]) {
+      return { type: "submit_thief_choice", actorId: seatId, role: view.legalRoleChoices[0] as import("../engine").Role };
+    }
+    if (view.legalActions.includes("submit_cupid_lovers") && view.legalTargets.length >= 2) {
+      return { type: "submit_cupid_lovers", actorId: seatId, targetIds: [view.legalTargets[0] as string, view.legalTargets[1] as string] };
+    }
+    if (view.legalActions.includes("submit_seer_target")) {
+      return { type: "submit_seer_target", actorId: seatId, ...(view.legalTargets[0] ? { targetId: view.legalTargets[0] } : {}) };
+    }
+    if (view.legalActions.includes("submit_witch_action")) {
+      return {
+        type: "submit_witch_action",
+        actorId: seatId,
+        ...(view.pendingWerewolfTarget && view.witchPotions.saveAvailable ? { saveTargetId: view.pendingWerewolfTarget } : {})
+      };
+    }
+    if (view.legalActions.includes("submit_sheriff_vote")) {
+      return { type: "submit_sheriff_vote", actorId: seatId, targetId: this.firstLegalAiTarget(room, seatId) ?? "abstain" };
+    }
+    if (view.legalActions.includes("submit_vote")) {
+      return { type: "submit_vote", actorId: seatId, targetId: this.firstLegalAiTarget(room, seatId) ?? "abstain" };
+    }
+    return undefined;
+  }
+
+  private firstLegalAiTarget(room: RoomState, seatId: string): string | undefined {
+    if (!room.game) return undefined;
+    const view = toPrivatePlayerView(room.game, seatId);
+    return view.legalTargets.find((targetId) => targetId !== seatId && targetId !== "abstain") ?? view.legalTargets[0];
   }
 
   private async closeSocket(socket: WebSocket): Promise<void> {
