@@ -88,7 +88,7 @@ describe("Miller Hollow V1 engine", () => {
       }, {});
 
       expect(counts).toEqual(expected[preset.id as keyof typeof expected]);
-      expect(game.phase).toBe(preset.id === "official_roleflow_8" ? "night_seer" : "night_werewolves");
+      expect(game.phase).toBe(preset.nightOrder === "official" ? "night_seer" : "night_werewolves");
     }
   });
 
@@ -291,9 +291,9 @@ describe("Miller Hollow V1 engine", () => {
     const seer = game.players.find((player) => game.roles[player.id] === "seer")?.id as PlayerId;
     const target = game.players.find((player) => game.roles[player.id] === "villager")?.id as PlayerId;
 
-    game = applyCommand(game, { type: "submit_werewolf_target", actorId: wolf, targetId: target }).state;
-    expect(game.phase).toBe("night_seer");
     game = applyCommand(game, { type: "submit_seer_target", actorId: seer, targetId: wolf }).state;
+    expect(game.phase).toBe("night_werewolves");
+    game = applyCommand(game, { type: "submit_werewolf_target", actorId: wolf, targetId: target }).state;
     expect(game.phase).toBe("day_discussion");
     expect(game.alive[target]).toBe(false);
   });

@@ -100,8 +100,8 @@ const officialPresets = (Object.entries(officialRoleCounts) as Array<[OfficialBa
       rulesSource: "official_rulebook",
       playerCount,
       counts,
-      nightOrder: "legacy",
-      werewolfTimeoutNoKill: false,
+      nightOrder: "official",
+      werewolfTimeoutNoKill: true,
       sheriffEnabled: false
     });
   }

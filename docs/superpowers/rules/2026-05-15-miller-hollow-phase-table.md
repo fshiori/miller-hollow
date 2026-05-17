@@ -6,8 +6,8 @@ For V6.1 rulebook alignment decisions, see `docs/superpowers/rules/2026-05-16-mi
 
 | Phase | Public Label | Private Actors | Public Timeout Behavior | Next Phase |
 | --- | --- | --- | --- | --- |
-| `night_werewolves` | Werewolves | Living Werewolves | Legacy/app-basic: valid proposal or random legal target. V5 roleflow: no kill when no target is selected. | Legacy: `night_seer`; roleflow: `night_witch` if present, otherwise `day_discussion` or reaction/ended |
-| `night_seer` | Seer | Living Seer, if any | Skip vision if no Seer action | Legacy/app-basic: `night_witch`; V5 roleflow: `night_werewolves` |
+| `night_werewolves` | Werewolves | Living Werewolves | Official basic/roleflow: valid proposal or no kill. Legacy/app-basic: valid proposal or random legal target. | Official basic/roleflow: `night_witch` if present, otherwise `day_discussion` or reaction/ended. Legacy/app-basic: `night_seer` |
+| `night_seer` | Seer | Living Seer, if any | Skip vision if no Seer action | Official basic/roleflow: `night_werewolves`. Legacy/app-basic: `night_witch` |
 | `night_witch` | Witch | Living Witch, if any | Skip potion use if no Witch action | `day_discussion` or `ended` |
 | `day_discussion` | Day Discussion | Living players chat and mark ready; host may open Sheriff election in V5 roleflow; dedicated host can separately trigger AI chat and AI ready in demo rooms | Advance to vote after host advance or all living ready | `day_vote` or `sheriff_election` |
 | `sheriff_election` | Sheriff Election | Living players vote | Missing votes become abstentions | `day_discussion` |

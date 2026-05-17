@@ -39,11 +39,11 @@ Each night the Werewolves wake, recognize one another, consult, and choose one v
 
 ### Current Implementation
 
-The engine supports Werewolf teammates, hidden Werewolf chat, shared target proposal, and per-Werewolf confirmation. App-basic legacy rooms can fall back to a legal target on timeout; roleflow rooms can produce no kill when no target is selected.
+The engine supports Werewolf teammates, hidden Werewolf chat, shared target proposal, and per-Werewolf confirmation. Official basic and roleflow rooms can produce no kill when no target is selected. App-basic legacy rooms can fall back to a legal target on timeout.
 
 ### Decision
 
-Intentional online adaptation. The roleflow behavior matches the rulebook no-decision guidance. The legacy app-basic fallback is retained for old compatibility rooms and is documented as app-specific.
+Intentional online adaptation. The official basic and roleflow behavior matches the rulebook no-decision guidance. The legacy app-basic fallback is retained for old compatibility rooms and is documented as app-specific.
 
 ### Required Tests
 
@@ -186,7 +186,7 @@ Setup round: Thief, then Cupido, then Lovers recognize each other. Standard nigh
 
 ### Current Implementation
 
-Custom roleflow resolves `thief_choice`, then `night_cupid`, then the normal official night order. Lovers receive private partner information after Cupid resolves; there is no separate public phase for Lovers waking.
+Official basic and roleflow rooms use the normal official night order. Custom roleflow resolves `thief_choice`, then `night_cupid`, then the normal official night order. Lovers receive private partner information after Cupid resolves; there is no separate public phase for Lovers waking.
 
 ### Decision
 

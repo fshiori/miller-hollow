@@ -4,6 +4,38 @@ Date: 2026-05-15
 
 This document is the fast human-readable version history. `CHANGELOG.md` remains the package-level changelog; this file summarizes what each completed milestone means in product terms.
 
+## 0.7.1 - V7.1 Official Basic Completeness
+
+Status:
+
+- Implemented locally.
+- Focuses on making official basic rooms the primary polished product path before AI companion work.
+- No AI companion features.
+
+Completed:
+
+- Added V7.1 design and implementation documents.
+- Made create-room UI default to official basic rooms.
+- Hid advanced custom-role controls behind an explicit `進階自訂角色` mode.
+- Added a live official-basic role summary before room creation.
+- Changed official beginner presets to use official-style night order: Fortune Teller first, then Werewolves.
+- Changed official beginner Werewolf timeout behavior to produce no victim when no target is selected.
+- Preserved legacy app-basic compatibility behavior separately.
+- Added API smoke coverage for an official basic game reaching endgame.
+- Updated browser smoke for official-basic create-room role summary and explicit custom-role mode.
+- Updated README, changelog, rules docs, phase table, and official-rules audit.
+- Kept AI demo/test controls isolated from normal player rooms.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+
 ## 0.7.0 - V6.3/V7 Demo Pacing And Player Experience
 
 Status:

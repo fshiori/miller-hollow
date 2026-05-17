@@ -67,8 +67,8 @@ await post(`/api/rooms/${room.roomId}/start`, {
 });
 
 const state = await get(`/api/rooms/${room.roomId}/state`);
-const roleflow = presetId === "official_roleflow_8";
-assert(state.game?.phase === (roleflow ? "night_seer" : "night_werewolves"), "game did not start in expected first night phase");
+const officialNightOrder = presetId.startsWith("official_");
+assert(state.game?.phase === (officialNightOrder ? "night_seer" : "night_werewolves"), "game did not start in expected first night phase");
 assert(!publicStateHasRoles(state), "public state leaked roles before endgame");
 assert(!JSON.stringify(state).includes("playerTokenHash"), "public state leaked token hashes");
 assert(!JSON.stringify(state).includes("socketTickets"), "public state leaked socket tickets");
@@ -82,9 +82,9 @@ assertRoleCounts(privates, expectedPreset, presetId);
 assert(privates[wolfIndex].werewolfTeammates.length === expectedPreset.werewolf - 1, "werewolf teammate private view missing");
 assert(privates.filter((view) => view.role !== "seer").every((view) => Object.keys(view.seerResults).length === 0), "seer results leaked to non-Seer");
 
-if (roleflow) {
+if (officialNightOrder) {
   const seerIndex = privates.findIndex((view) => view.role === "seer");
-  assert(seerIndex >= 0, "remote roleflow smoke could not find a Seer");
+  assert(seerIndex >= 0, "remote smoke could not find a Seer");
   await socketSend(room.roomId, joined[seerIndex], {
     type: "night_action",
     targetId: privates[seerIndex].legalTargets[0]

@@ -91,6 +91,8 @@ try {
   console.log("Dedicated host smoke passed");
   await smokeDedicatedHostAiFlow();
   console.log("Dedicated host AI smoke passed");
+  await smokeOfficialBasicEndgame();
+  console.log("Official basic endgame smoke passed");
   const room = await post("/api/rooms", { presetId: "app_basic_8" });
   const joined = [];
   const spectatorTicket = await post(`/api/rooms/${room.roomId}/spectator-ticket`);
@@ -328,7 +330,7 @@ async function smokeAllPresetStarts() {
       token: joined[0].token
     });
     const started = await get(`/api/rooms/${room.roomId}/state`);
-    assert(started.game?.phase === (presetId === "official_roleflow_8" ? "night_seer" : "night_werewolves"), `${presetId} did not start`);
+    assert(started.game?.phase === expectedStartingPhase(presetId), `${presetId} did not start`);
     assert(started.preset?.id === presetId, `${presetId} public preset missing`);
     assert(!publicStateHasRoles(started), `${presetId} public state leaked roles`);
     assert(!started.game.endgameReveal, `${presetId} revealed endgame early`);
@@ -462,6 +464,76 @@ async function smokeDedicatedHostAiFlow() {
   assert(observer.observer?.players?.every((player) => player.role), "AI observer did not reveal roles to dedicated host");
 }
 
+async function smokeOfficialBasicEndgame() {
+  const room = await post("/api/rooms", { presetId: "official_basic_8" });
+  const joined = [];
+  for (let index = 1; index <= 8; index += 1) {
+    joined.push(await post(`/api/rooms/${room.roomId}/join`, { nickname: `Official Basic ${index}` }));
+  }
+  for (const player of joined) {
+    await socketSend(room.roomId, player, { type: "set_ready", ready: true }, undefined);
+  }
+  await waitForEligibility(room.roomId, true);
+  await post(`/api/rooms/${room.roomId}/start`, {
+    seatId: joined[0].seatId,
+    token: joined[0].token
+  });
+
+  let state = await get(`/api/rooms/${room.roomId}/state`);
+  assert(state.game?.phase === "night_seer", "official basic did not start with Fortune Teller");
+  const privates = await privateViews(room.roomId, joined);
+  const seer = joined[privates.findIndex((view) => view.role === "seer")];
+  const wolves = privates.map((view, index) => (view.role === "werewolf" ? joined[index] : undefined)).filter(Boolean);
+  assert(seer, "official basic smoke could not find Fortune Teller");
+  assert(wolves.length === 2, "official basic smoke expected two Werewolves");
+
+  await runOfficialBasicNight(room.roomId, joined, seer, wolves[0], [seer.seatId]);
+  await executeByVote(room.roomId, joined, wolves[0].seatId, "night_seer");
+  state = await get(`/api/rooms/${room.roomId}/state`);
+  assert(!publicStateHasRoles(state), "official basic leaked roles before endgame");
+
+  const livingWolf = wolves.find((wolf) => state.game.players.some((player) => player.id === wolf.seatId && player.alive));
+  assert(livingWolf, "official basic smoke could not find remaining Werewolf");
+  await runOfficialBasicNight(room.roomId, joined, seer, livingWolf, [seer.seatId]);
+  await executeByVote(room.roomId, joined, livingWolf.seatId, "ended");
+
+  state = await get(`/api/rooms/${room.roomId}/state`);
+  assert(state.game?.phase === "ended", "official basic did not reach endgame");
+  assert(state.game?.winner === "village", "official basic did not end with village win after all Werewolves died");
+  assert(state.game?.endgameReveal?.players?.some((player) => player.role === "werewolf"), "official basic endgame did not reveal roles");
+  const latestVoteResult = state.game?.voteResults?.at(-1);
+  assert(latestVoteResult?.executedPlayerId === livingWolf.seatId, "official basic endgame vote did not reveal executed Werewolf");
+}
+
+async function runOfficialBasicNight(roomId, joined, seer, wolf, excludedTargetIds) {
+  let privates = await privateViews(roomId, joined);
+  const seerView = privates.find((view) => view.playerId === seer.seatId);
+  assert(seerView?.legalTargets?.length, "official basic Fortune Teller had no legal targets");
+  await socketSend(roomId, seer, { type: "night_action", targetId: seerView.legalTargets[0] }, "night_werewolves");
+
+  privates = await privateViews(roomId, joined);
+  const wolfView = privates.find((view) => view.playerId === wolf.seatId);
+  const excluded = new Set(excludedTargetIds);
+  const victimId = wolfView?.legalTargets?.find((targetId) => !excluded.has(targetId));
+  assert(victimId, "official basic Werewolf had no legal victim");
+  await socketSend(roomId, wolf, { type: "propose_werewolf_target", targetId: victimId }, undefined);
+  for (const player of await livingWerewolfSessions(roomId, joined)) {
+    await socketSend(roomId, player, { type: "set_werewolf_ready", ready: true }, undefined);
+  }
+  await waitForPhase(roomId, "day_discussion", 5_000);
+}
+
+async function executeByVote(roomId, joined, targetId, expectedPhase) {
+  for (const player of await livingSessions(roomId, joined)) {
+    await socketSend(roomId, player, { type: "set_day_ready", ready: true }, undefined);
+  }
+  await waitForPhase(roomId, "day_vote", 5_000);
+  for (const voter of await livingSessions(roomId, joined)) {
+    await socketSend(roomId, voter, { type: "vote", targetId }, undefined);
+  }
+  await waitForPhase(roomId, expectedPhase, 5_000);
+}
+
 async function post(path, body) {
   const response = await fetch(`${base}${path}`, {
     method: "POST",
@@ -505,6 +577,12 @@ async function livingSessions(roomId, joined) {
   const state = await get(`/api/rooms/${roomId}/state`);
   const livingSeatIds = new Set(state.game.players.filter((player) => player.alive).map((player) => player.id));
   return joined.filter((player) => livingSeatIds.has(player.seatId));
+}
+
+async function livingWerewolfSessions(roomId, joined) {
+  const privates = await privateViews(roomId, joined);
+  const livingSeatIds = new Set((await livingSessions(roomId, joined)).map((player) => player.seatId));
+  return joined.filter((player, index) => livingSeatIds.has(player.seatId) && privates[index].role === "werewolf");
 }
 
 async function socketSend(roomId, player, message, expectedPhase) {
@@ -683,6 +761,10 @@ function assertRoleCounts(privates, expected, presetId) {
   for (const role of ["werewolf", "seer", "witch", "hunter", "villager"]) {
     assert((counts[role] ?? 0) === (expected[role] ?? 0), `${presetId} expected ${expected[role] ?? 0} ${role}, got ${counts[role] ?? 0}`);
   }
+}
+
+function expectedStartingPhase(presetId) {
+  return presetId.startsWith("official_") ? "night_seer" : "night_werewolves";
 }
 
 function assert(condition, message) {

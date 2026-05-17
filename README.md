@@ -1,12 +1,12 @@
 # Miller Hollow
 
-Basic Edition V7 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
+Basic Edition V7.1 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
 
 The player-facing browser UI is Traditional Chinese. Public API fields, internal ids, and developer diagnostics remain English for compatibility.
 
 This is an unofficial fan implementation and is not affiliated with the original game publisher or rights holders.
 
-V6.1 keeps internal ids stable while aligning player-facing terminology and implemented rules with the official rulebook. The audit lives in `docs/superpowers/rules/2026-05-16-miller-hollow-official-rules-audit.md`. V6.2 focused on hosted game flow. V6.3 split AI demo pacing into visible host steps, and V7 adds player-facing waiting states, phase timeline, rules quick reference, reconnect affordances, and mobile-oriented game layout refinements.
+V6.1 keeps internal ids stable while aligning player-facing terminology and implemented rules with the official rulebook. The audit lives in `docs/superpowers/rules/2026-05-16-miller-hollow-official-rules-audit.md`. V6.2 focused on hosted game flow. V6.3 split AI demo pacing into visible host steps, V7 adds player-facing waiting states, phase timeline, rules quick reference, reconnect affordances, and mobile-oriented game layout refinements, and V7.1 makes official basic rooms the primary polished create-room path with official night order.
 
 ## Commands
 
@@ -14,7 +14,7 @@ V6.1 keeps internal ids stable while aligning player-facing terminology and impl
 - `npm run typecheck` runs TypeScript checks.
 - `npm test` runs engine unit tests.
 - `npm run build` builds the browser assets and typechecks the Worker.
-- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, custom Thief/Cupid setup, V5 roleflow, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, player-host observer rejection, dedicated-host observer access, dedicated-host AI test-player progression with split demo steps, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, day readiness, WebSocket night actions, day chat, vote resolution, and public weighted vote reveal.
+- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, official-basic endgame, app-basic compatibility presets, custom Thief/Cupid setup, V5 roleflow, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, player-host observer rejection, dedicated-host observer access, dedicated-host AI test-player progression with split demo steps, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, day readiness, WebSocket night actions, day chat, vote resolution, and public weighted vote reveal.
 - `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus spectator views through create, join, watch, reconnect, V5 roleflow start, Seer action, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, voting, weighted vote reveal, rules reference, phase timeline, waiting-state copy, Traditional Chinese UI assertions, player-host hidden-info console rejection, AI demo control isolation, and responsive screenshots including an 18-seat lobby.
 - `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev` and `MILLER_HOLLOW_PRESET_ID=official_basic_18` or `official_roleflow_8`.
 - `npm run deploy:versioned` deploys with `MILLER_HOLLOW_BUILD_SHA` set from the current git commit.
@@ -53,7 +53,7 @@ The V5 roleflow preset is available separately while the beginner presets remain
 
 - `official_roleflow_8`: 2 Werewolves, 1 Fortune Teller, 1 Hunter, 4 Ordinary Townsfolk.
 
-V5 roleflow uses the official-style night order: Fortune Teller first, then Werewolves, then Witch if a future roleflow preset includes Witch. Werewolf timeout or host fast-forward without a selected target produces no Werewolf victim for V5 roleflow rooms.
+Official beginner and roleflow rooms use the official-style night order: Fortune Teller first, then Werewolves, then Witch if a future roleflow preset includes Witch. Werewolf timeout or host fast-forward without a selected target produces no Werewolf victim for official beginner and roleflow rooms.
 
 Hosts can also create a custom roleflow room before the lobby opens. Custom roleflow supports the currently implemented role cards: Werewolf, Fortune Teller, Witch, Hunter, Thief, Cupid, and Ordinary Townsfolk, with Sheriff as a public-office toggle. The custom setup is locked after room creation. Werewolf and Fortune Teller counts must match the rulebook recommendation for the selected player count; the browser warns before submit and the Worker rejects invalid setup. If Thief is enabled, the system adds two extra Ordinary Townsfolk cards to the deck, deals player-count cards, and leaves the two undealt cards as the hidden Thief choice. If both undealt cards are Werewolves, Thief must choose Werewolf. If Cupid is enabled, Cupid acts after Thief resolution and selects two distinct Lovers before the normal first night; Lovers privately see each other, die together through heartbreak, and cross-team Lovers can win together as the final two living players.
 

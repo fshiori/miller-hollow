@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.1 - Official Basic Completeness
+
+### Added
+
+- V7.1 design and implementation documents for official-basic completeness before AI companion work.
+- Browser smoke assertions for official-basic create-room role summaries.
+
+### Changed
+
+- The create-room UI now defaults to official basic rooms, with advanced custom roles behind an explicit mode.
+- Official beginner presets now use official-style night order and no-kill Werewolf timeout behavior.
+- Local and remote smoke expectations now treat all `official_*` presets as Fortune Teller first.
+- App version reports `0.7.1`.
+
 ## 0.7.0 - Player Experience And Demo Pacing
 
 ### Added

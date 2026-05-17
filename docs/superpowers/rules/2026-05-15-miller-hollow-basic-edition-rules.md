@@ -48,8 +48,11 @@ For the V6.1 official-rules audit, see `docs/superpowers/rules/2026-05-16-miller
 - Living Werewolves may use private night chat that is visible only to living Werewolves.
 - Living Werewolves may propose one shared non-Werewolf target.
 - Changing the proposed target clears existing Werewolf confirmations.
-- When every living Werewolf confirms a valid proposed target, the game advances to Fortune Teller or Seer night.
-- If the Werewolf timer expires, the proposed target is used when valid; otherwise a legal target is selected by timeout.
+- Official beginner and roleflow nights use official-style order: Fortune Teller first, then Werewolves, then Witch if present.
+- In legacy app-basic rooms, Werewolves act before Fortune Teller for compatibility.
+- When every living Werewolf confirms a valid proposed target, the game advances to the next night-resolution phase.
+- If the Werewolf timer expires in official beginner or roleflow rooms, the proposed target is used when valid; otherwise there is no Werewolf victim.
+- If the Werewolf timer expires in legacy app-basic rooms, the proposed target is used when valid; otherwise a legal target is selected by timeout.
 - Fortune Teller or Seer may inspect one living target and privately sees that role.
 - App-basic presets include a Witch.
 - Witch may save the Werewolf target once.
@@ -57,9 +60,8 @@ For the V6.1 official-rules audit, see `docs/superpowers/rules/2026-05-16-miller
 - Witch may use either potion on themselves.
 - Official beginner presets have no Witch, so night deaths resolve after Fortune Teller action.
 - App-basic night deaths resolve after Witch action.
-- V5 roleflow nights use official-style order: Fortune Teller first, then Werewolves, then Witch if present.
 - Custom roleflow nights resolve opening roles before the normal first night: Thief chooses a spare role if present, then Cupid chooses two distinct Lovers if present.
-- V5 roleflow Werewolf timeout or host fast-forward without a selected target produces no Werewolf victim.
+- Official beginner and roleflow Werewolf timeout or host fast-forward without a selected target produces no Werewolf victim.
 
 ## Day
 

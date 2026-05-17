@@ -313,7 +313,15 @@ function render(): void {
                   }).join("")}
                 </select>
               </label>
-              <div id="custom-role-panel" class="custom-role-panel">
+              <div class="role-toggle-grid">
+                <label class="check"><input name="rulesMode" type="radio" value="official_basic" checked /> 官方基本局（狼人、預言家、普通村民）</label>
+                <label class="check"><input name="rulesMode" type="radio" value="custom_roleflow" /> 進階自訂角色</label>
+              </div>
+              <div id="official-basic-summary" class="role-derived-count official-basic-summary" data-testid="official-basic-summary">
+                <span>官方基本配置</span>
+                <strong>2 狼人 · 1 預言家 · 5 普通村民</strong>
+              </div>
+              <div id="custom-role-panel" class="custom-role-panel" hidden>
                 <label>狼人
                   <input name="werewolfCount" type="number" min="1" max="4" value="2" />
                   <span class="field-hint" id="werewolf-recommendation">推薦：2 張</span>
@@ -1234,7 +1242,7 @@ function renderVoteResultsPanel(): string {
 }
 
 function renderJumpLatestButton(): string {
-  return autoFollowLogs ? "" : `<button class="mini secondary jump-latest-button" type="button">跳到最新</button>`;
+  return autoFollowLogs ? "" : `<button class="mini secondary jump-latest-button" type="button" data-testid="jump-latest-button">回到最新</button>`;
 }
 
 function actionStateLabel(view: PrivateView): string {
@@ -1281,17 +1289,21 @@ function bindAuthForms(): void {
       render();
       return;
     }
+    const rulesMode = String(data.get("rulesMode") ?? "official_basic");
+    const playerCount = Number(data.get("customPlayerCount") ?? 8);
     const customRoleSetup = readCustomRoleSetup(form);
-    const validation = customRoleSetupWarning(customRoleSetup);
-    if (validation) {
-      alert(`目前角色配置和規則書建議不一致，請先調整後再建立房間。\n${validation}`);
-      return;
+    if (rulesMode === "custom_roleflow") {
+      const validation = customRoleSetupWarning(customRoleSetup);
+      if (validation) {
+        alert(`目前角色配置和規則書建議不一致，請先調整後再建立房間。\n${validation}`);
+        return;
+      }
     }
     await runUiAction(async () => {
       const roomResponse = await fetch("/api/rooms", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ customRoleSetup, hostMode })
+        body: JSON.stringify(rulesMode === "custom_roleflow" ? { customRoleSetup, hostMode } : { presetId: `official_basic_${playerCount}`, hostMode })
       });
       const created = (await roomResponse.json()) as { roomId: string; hostToken?: string; error?: string };
       if (!roomResponse.ok) throw new Error(created.error ?? "Create room failed");
@@ -1325,6 +1337,17 @@ function bindCustomRoleSetup(form: HTMLFormElement | null): void {
   );
   const refresh = () => {
     const count = Number(playerCount?.value ?? 8);
+    const rulesMode = String(new FormData(form).get("rulesMode") ?? "official_basic");
+    const customPanel = form.querySelector<HTMLDivElement>("#custom-role-panel");
+    const basicSummary = form.querySelector<HTMLDivElement>("#official-basic-summary");
+    if (customPanel) customPanel.hidden = rulesMode !== "custom_roleflow";
+    if (basicSummary) {
+      basicSummary.hidden = rulesMode === "custom_roleflow";
+      const werewolves = recommendedWerewolves(count);
+      const villagers = count - werewolves - 1;
+      const strong = basicSummary.querySelector("strong");
+      if (strong) strong.textContent = `${werewolves} 狼人 · 1 預言家 · ${villagers} 普通村民`;
+    }
     updateDerivedVillagers(form);
     const thiefHint = form.querySelector<HTMLParagraphElement>("#thief-rule-hint");
     if (thiefHint) thiefHint.hidden = !checked(form, "thiefEnabled");
@@ -1344,6 +1367,9 @@ function bindCustomRoleSetup(form: HTMLFormElement | null): void {
     input?.addEventListener("input", refresh);
     input?.addEventListener("change", refresh);
   }
+  form.querySelectorAll<HTMLInputElement>('input[name="rulesMode"]').forEach((input) => {
+    input.addEventListener("change", refresh);
+  });
   refresh();
 }
 
