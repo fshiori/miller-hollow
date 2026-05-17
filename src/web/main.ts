@@ -120,6 +120,14 @@ interface RoomView {
   activeSpectators?: number;
 }
 
+interface AiStepSummary {
+  stepType: "auto" | "night_action" | "day_chat" | "day_ready" | "vote" | "reaction";
+  phaseBefore: string;
+  phaseAfter: string;
+  actedSeatIds: string[];
+  skipped: Array<{ seatId: string; reason: string }>;
+}
+
 interface CustomRoleSetup {
   playerCount: number;
   roles: {
@@ -245,11 +253,16 @@ let roomPollHandle: number | undefined;
 let connectionStatus: "offline" | "connecting" | "connected" | "reconnecting" = session ? "connecting" : "offline";
 let statusMessage = "";
 let autoFollowLogs = true;
+let aiAutoHandle: number | undefined;
+let lastAiStep: AiStepSummary | undefined;
+let submittingAction = false;
 const roomIdFromPath = location.pathname.match(/^\/room\/([^/]+)$/)?.[1] ?? "";
 const spectatorRoomId = location.pathname.match(/^\/room\/([^/]+)\/watch$/)?.[1] ?? "";
 const hostObserverRoomId = location.pathname.match(/^\/room\/([^/]+)\/host-watch$/)?.[1] ?? "";
 const watching = Boolean(spectatorRoomId);
 const hostObserving = Boolean(hostObserverRoomId);
+
+window.addEventListener("beforeunload", stopAiAutoStep);
 
 void boot();
 
@@ -282,8 +295,9 @@ function render(): void {
             <div class="eyebrow">隱藏身分桌遊</div>
             <h1>米勒山谷狼人</h1>
             <p>位在美國中部米勒山谷中的偏遠小鎮最近被狼人滲透。每晚，因為某些神秘原因（也許是溫室效應）變成狼人的鎮民會殺死其他良善的鎮民。現在是控制和消滅這些流傳自遠古時代邪惡物種的最後關頭了，否則，鎮上所剩無幾的居民將無一倖免。</p>
-          </header>
-          <div class="panel auth-panel">
+	          </header>
+	          ${statusMessage ? `<div class="banner">${escapeHtml(statusMessage)}</div>` : ""}
+	          <div class="panel auth-panel">
             <form id="create-form" class="auth-card primary-auth">
               <h2>建立房間</h2>
               <label>暱稱<input name="nickname" maxlength="32" autocomplete="nickname" /></label>
@@ -361,7 +375,7 @@ function render(): void {
           <button id="leave-button" class="secondary">離開</button>
         </div>
       </header>
-      ${statusMessage ? `<div class="banner">${escapeHtml(statusMessage)}</div>` : ""}
+      ${statusMessage ? `<div class="banner">${escapeHtml(statusMessage)}${renderReconnectButton()}</div>` : ""}
 
       <section class="layout">
         <aside class="sidebar">
@@ -418,6 +432,9 @@ function render(): void {
               </div>
             </div>
             ${renderActionPanel()}
+            ${renderWaitingState()}
+            ${renderPhaseTimeline()}
+            ${renderRulesReference()}
           </section>
           ${renderEndgamePanel()}
           ${renderVoteResultsPanel()}
@@ -484,7 +501,7 @@ function renderSpectator(): void {
           <a class="button-link secondary" href="/room/${escapeHtml(spectatorRoomId)}">加入</a>
         </div>
       </header>
-      ${statusMessage ? `<div class="banner">${escapeHtml(statusMessage)}</div>` : ""}
+      ${statusMessage ? `<div class="banner">${escapeHtml(statusMessage)}${renderReconnectButton()}</div>` : ""}
       <section class="layout">
         <aside class="sidebar">
           <section class="panel">
@@ -503,6 +520,9 @@ function renderSpectator(): void {
                 })
                 .join("")}
             </div>
+            ${renderWaitingState()}
+            ${renderPhaseTimeline()}
+            ${renderRulesReference()}
           </section>
         </aside>
         <section class="main-column">
@@ -581,7 +601,7 @@ function renderHostObserver(): void {
           <button id="observer-copy-watch-link-button" class="secondary" type="button">公開觀戰連結</button>
         </div>
       </header>
-      ${statusMessage ? `<div class="banner">${escapeHtml(statusMessage)}</div>` : ""}
+      ${statusMessage ? `<div class="banner">${escapeHtml(statusMessage)}${renderReconnectButton()}</div>` : ""}
       <section class="layout observer-layout">
         <aside class="sidebar">
           <section class="panel">
@@ -620,6 +640,8 @@ function renderHostObserver(): void {
               </div>
             </div>
             ${renderObserverPhasePanel(observerRoom)}
+            ${renderPhaseTimeline()}
+            ${renderRulesReference()}
           </section>
           ${renderVoteResultsPanel()}
           <section class="panel">
@@ -787,10 +809,12 @@ function renderRoomMeta(): string {
 function renderHostTools(): string {
   if (!session || !room || !isHostSession()) return "";
   const canOpenHostConsole = room.settings.hostMode === "dedicated_host";
+  const hasAiSeats = room.seats.some((seat) => seat.controller === "ai");
   return `
     <section class="panel tools-panel">
       <h2>房間工具</h2>
       ${renderRoleSummary()}
+      ${renderAiDemoTools(hasAiSeats)}
       <div class="tool-row">
         <button id="copy-link-button" class="secondary" type="button">複製連結</button>
         <button id="copy-watch-link-button" class="secondary" type="button">觀戰連結</button>
@@ -802,14 +826,73 @@ function renderHostTools(): string {
         <button id="diagnostics-button" class="secondary" type="button">診斷資訊</button>
         <button id="lock-button" class="secondary" type="button">${room.settings.locked ? "解鎖" : "鎖定"}</button>
         <button id="spectators-button" class="secondary" type="button">${room.settings.spectatorsEnabled ? "關閉觀戰" : "開放觀戰"}</button>
-        ${room.status === "lobby" && room.seats.some((seat) => !seat.nickname) ? `<button id="add-ai-players-button" class="secondary" type="button">補滿 AI</button>` : ""}
         ${room.status === "playing" && room.game?.sheriff?.electionAvailable ? `<button id="open-sheriff-election-button" class="secondary" type="button">開啟警長選舉</button>` : ""}
-        ${room.status === "playing" && room.seats.some((seat) => seat.controller === "ai") ? `<button id="ai-step-button" class="secondary" type="button">執行 AI 行動</button>` : ""}
         ${room.status === "playing" && room.game?.phase !== "ended" ? `<button id="advance-phase-button" class="secondary" type="button">快轉階段</button>` : ""}
       </div>
       ${room.status !== "playing" ? `<button id="reset-button" type="button">重設大廳</button>` : ""}
     </section>
   `;
+}
+
+function renderAiDemoTools(hasAiSeats: boolean): string {
+  if (!session || !room || room.settings.hostMode !== "dedicated_host" || session.hostMode !== "dedicated_host") return "";
+  const phase = room.game?.phase;
+  const recommended = recommendedAiStepLabel();
+  return `
+    <div class="ai-demo-tools">
+      <div class="panel-heading compact-heading">
+        <h3>AI Demo</h3>
+        <span>${aiAutoHandle ? "自動中" : "手動"}</span>
+      </div>
+      <p class="muted">下一步建議：${escapeHtml(recommended)}</p>
+      ${lastAiStep ? `<p class="muted">上一步：${escapeHtml(labelAiStep(lastAiStep.stepType))}，${lastAiStep.actedSeatIds.length} 名 AI 行動，${escapeHtml(labelPhase(lastAiStep.phaseBefore))} → ${escapeHtml(labelPhase(lastAiStep.phaseAfter))}</p>` : ""}
+      <div class="tool-row">
+        ${room.status === "lobby" && room.seats.some((seat) => !seat.nickname) ? `<button id="add-ai-players-button" class="secondary" type="button">補滿 AI</button>` : ""}
+        ${
+          room.status === "playing" && hasAiSeats
+            ? `
+              <button class="secondary" type="button" data-ai-step="night_action" ${isNightPhase(phase) ? "" : "disabled"}>AI 夜晚行動</button>
+              <button class="secondary" type="button" data-ai-step="day_chat" ${phase === "day_discussion" ? "" : "disabled"}>AI 發言</button>
+              <button class="secondary" type="button" data-ai-step="day_ready" ${phase === "day_discussion" ? "" : "disabled"}>AI 準備投票</button>
+              <button class="secondary" type="button" data-ai-step="vote" ${phase === "day_vote" || phase === "sheriff_election" ? "" : "disabled"}>AI 投票</button>
+              <button class="secondary" type="button" data-ai-step="reaction" ${phase === "hunter_revenge" || phase === "sheriff_succession" ? "" : "disabled"}>AI 反應</button>
+              <button id="ai-auto-button" class="secondary" type="button" ${aiAutoHandle ? "disabled" : ""}>自動每 5 秒</button>
+              <button id="ai-pause-button" class="secondary" type="button" ${aiAutoHandle ? "" : "disabled"}>暫停自動</button>
+            `
+            : ""
+        }
+      </div>
+    </div>
+  `;
+}
+
+function recommendedAiStepLabel(): string {
+  const phase = room?.game?.phase;
+  if (!phase) return "等待開局";
+  if (phase === "day_discussion") {
+    const livingAi = room?.seats.filter((seat) => seat.controller === "ai" && seat.nickname && room?.game?.players.find((player) => player.id === seat.seatId)?.alive) ?? [];
+    const unready = livingAi.some((seat) => !(room?.phaseInteraction?.dayReadySeatIds ?? []).includes(seat.seatId));
+    return unready ? "先 AI 發言，再 AI 準備投票" : "可進入投票";
+  }
+  if (phase === "day_vote" || phase === "sheriff_election") return "AI 投票";
+  if (phase === "hunter_revenge" || phase === "sheriff_succession") return "AI 反應";
+  if (isNightPhase(phase)) return "AI 夜晚行動";
+  return "無可用 AI 行動";
+}
+
+function labelAiStep(step: AiStepSummary["stepType"]): string {
+  return {
+    auto: "自動",
+    night_action: "夜晚行動",
+    day_chat: "發言",
+    day_ready: "準備投票",
+    vote: "投票",
+    reaction: "反應"
+  }[step];
+}
+
+function isNightPhase(phase: string | undefined): boolean {
+  return phase === "thief_choice" || phase === "night_cupid" || phase === "night_werewolves" || phase === "night_seer" || phase === "night_witch";
 }
 
 function renderRoleSummary(): string {
@@ -943,6 +1026,85 @@ function renderActionPanel(): string {
     return renderDayReadyPanel();
   }
   return `<p class="muted">等待目前階段結束。</p>`;
+}
+
+function renderWaitingState(): string {
+  if (!room?.game) {
+    const eligibility = room?.startEligibility;
+    const text = eligibility?.canStart
+      ? "等待房主開始遊戲。"
+      : eligibility?.blockedReason
+        ? labelBlockedReason(eligibility.blockedReason)
+        : "等待玩家加入並準備。";
+    return `<div class="status-note" data-testid="waiting-state">${escapeHtml(text)}</div>`;
+  }
+  if (privateView) {
+    const state = privateView.actionState;
+    const text = state.required
+      ? state.submitted
+        ? "你已提交行動，等待其他玩家。"
+        : state.label
+          ? `輪到你：${labelActionState(state.label)}。`
+          : "輪到你行動。"
+      : actionStateLabel(privateView);
+    const submitting = submittingAction ? `<span>送出中...</span>` : "";
+    return `<div class="status-note" data-testid="waiting-state">${escapeHtml(text)}${submitting}</div>`;
+  }
+  const status = room.game.phaseStatus;
+  const count =
+    typeof status.submittedCount === "number" && typeof status.requiredCount === "number"
+      ? `（${status.submittedCount}/${status.requiredCount}）`
+      : "";
+  return `<div class="status-note" data-testid="waiting-state">${escapeHtml(labelPhaseStatus(status.label))}${escapeHtml(count)}</div>`;
+}
+
+function renderPhaseTimeline(): string {
+  const phase = room?.game?.phase;
+  const phases: Phase[] = ["thief_choice", "night_cupid", "night_seer", "night_werewolves", "night_witch", "day_discussion", "sheriff_election", "day_vote"];
+  const visible = phases.filter((entry) => shouldShowTimelinePhase(entry));
+  if (!phase && room?.status === "lobby") {
+    return `<div class="phase-timeline" data-testid="phase-timeline"><span class="current">大廳</span><span>等待開局</span></div>`;
+  }
+  return `
+    <div class="phase-timeline" data-testid="phase-timeline">
+      ${visible.map((entry) => `<span class="${entry === phase ? "current" : ""}">${escapeHtml(labelPhase(entry))}</span>`).join("")}
+      ${phase === "hunter_revenge" || phase === "sheriff_succession" ? `<span class="current">${escapeHtml(labelPhase(phase))}</span>` : ""}
+      ${phase === "ended" ? `<span class="current">${escapeHtml(labelPhase(phase))}</span>` : ""}
+    </div>
+  `;
+}
+
+function shouldShowTimelinePhase(phase: Phase): boolean {
+  const roles = new Set(room?.preset?.roleSummary.map((entry) => entry.role) ?? []);
+  if (phase === "thief_choice") return roles.has("thief");
+  if (phase === "night_cupid") return roles.has("cupid");
+  if (phase === "night_witch") return roles.has("witch");
+  if (phase === "sheriff_election") return Boolean(room?.game?.sheriff.electionAvailable || room?.game?.sheriff.holderId || room?.settings.customRoleSetup?.sheriffEnabled);
+  return true;
+}
+
+function renderRulesReference(): string {
+  if (!room) return "";
+  const roleSummary = room.preset?.roleSummary.map((entry) => `${entry.count} ${labelRole(entry.role)}`).join("、") || "尚未設定";
+  const setup = room.settings.customRoleSetup;
+  const nightOrder = setup?.nightOrder === "legacy" ? "狼人先行" : "官方夜晚順序";
+  const sheriff = setup?.sheriffEnabled ?? true;
+  const wolfTimeoutNoKill = setup?.werewolfTimeoutNoKill ?? room.preset?.family === "official_roleflow";
+  return `
+    <details class="rules-reference" data-testid="rules-reference">
+      <summary>房間規則</summary>
+      <p>配置：${escapeHtml(labelPreset(room.preset?.label, room.settings.playerCount))}</p>
+      <p>角色：${escapeHtml(roleSummary)}</p>
+      <p>主持：${room.settings.hostMode === "dedicated_host" ? "專職主持，可查看隱藏資訊" : "玩家房主，無隱藏資訊後台"}</p>
+      <p>觀戰：${room.settings.spectatorsEnabled ? "開放" : "關閉"} · ${escapeHtml(nightOrder)} · 警長${sheriff ? "啟用" : "停用"}</p>
+      <p>狼人逾時：${wolfTimeoutNoKill ? "未選目標則不殺人" : "逾時使用合法目標"} · 投票結束後公開亮票。</p>
+    </details>
+  `;
+}
+
+function renderReconnectButton(): string {
+  if (!session || connectionStatus !== "reconnecting") return "";
+  return ` <button id="retry-reconnect-button" class="mini secondary" type="button">重試連線</button>`;
 }
 
 function renderWerewolfPanel(): string {
@@ -1279,6 +1441,10 @@ function bindRoomActions(): void {
     statusMessage = "";
     render();
   });
+  document.querySelector<HTMLButtonElement>("#retry-reconnect-button")?.addEventListener("click", () => {
+    statusMessage = "";
+    openSocket();
+  });
   document.querySelector<HTMLButtonElement>("#copy-link-button")?.addEventListener("click", () => {
     void copyRoomLink();
   });
@@ -1301,7 +1467,19 @@ function bindRoomActions(): void {
     void hostControl("add-ai-players");
   });
   document.querySelector<HTMLButtonElement>("#ai-step-button")?.addEventListener("click", () => {
-    void hostControl("ai-step");
+    void hostAiStep("auto");
+  });
+  document.querySelectorAll<HTMLButtonElement>("[data-ai-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      void hostAiStep(button.dataset.aiStep ?? "auto");
+    });
+  });
+  document.querySelector<HTMLButtonElement>("#ai-auto-button")?.addEventListener("click", () => {
+    startAiAutoStep();
+  });
+  document.querySelector<HTMLButtonElement>("#ai-pause-button")?.addEventListener("click", () => {
+    stopAiAutoStep();
+    render();
   });
   document.querySelector<HTMLButtonElement>("#advance-phase-button")?.addEventListener("click", () => {
     void hostControl("advance-phase");
@@ -1601,11 +1779,13 @@ async function openSocketWithTicket(): Promise<void> {
       error?: string;
     };
     if (payload.type === "error") {
+      submittingAction = false;
       statusMessage = localizeError(payload.error ?? "Server rejected that action.");
       render();
       return;
     }
     if (payload.type === "room_view" && payload.room) {
+      submittingAction = false;
       room = payload.room;
       connectionStatus = "connected";
       statusMessage = "";
@@ -1686,21 +1866,66 @@ async function resetRoom(): Promise<void> {
   });
 }
 
-async function hostControl(action: string, targetSeatId?: string): Promise<void> {
+async function hostControl(action: string, targetSeatId?: string, extra: Record<string, unknown> = {}): Promise<RoomView & { aiStep?: AiStepSummary }> {
   const currentSession = session;
-  if (!currentSession) return;
+  if (!currentSession) throw new Error("Missing session");
+  let payload: RoomView & { error?: string; aiStep?: AiStepSummary };
   await runUiAction(async () => {
     const response = await fetch(`/api/rooms/${currentSession.roomId}/host/${action}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ seatId: currentSession.seatId, token: currentSession.token, targetSeatId })
+      body: JSON.stringify({ seatId: currentSession.seatId, token: currentSession.token, targetSeatId, ...extra })
     });
-    const payload = (await response.json()) as RoomView & { error?: string };
+    payload = (await response.json()) as RoomView & { error?: string; aiStep?: AiStepSummary };
     if (!response.ok) throw new Error(localizeError(payload.error ?? "Host control failed"));
     room = payload;
+    if (payload.aiStep) lastAiStep = payload.aiStep;
     statusMessage = "房間已更新。";
     render();
   });
+  return payload!;
+}
+
+async function hostAiStep(stepType: string, mode: "one" | "all" = stepType === "vote" ? "one" : "all"): Promise<void> {
+  const currentSession = session;
+  if (!currentSession) throw new Error("Missing session");
+  const response = await fetch(`/api/rooms/${currentSession.roomId}/host/ai-step`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ seatId: currentSession.seatId, token: currentSession.token, stepType, mode })
+  });
+  const payload = (await response.json()) as RoomView & { error?: string; aiStep?: AiStepSummary };
+  if (!response.ok) throw new Error(payload.error ?? "Host control failed");
+  room = payload;
+  if (payload.aiStep) {
+    lastAiStep = payload.aiStep;
+    statusMessage = `AI 已執行${labelAiStep(payload.aiStep.stepType)}：${payload.aiStep.actedSeatIds.length} 名。`;
+  }
+  render();
+}
+
+function startAiAutoStep(): void {
+  if (aiAutoHandle) return;
+  void hostAiStep("auto").catch(stopAiAutoStep);
+  aiAutoHandle = window.setInterval(() => {
+    if (room?.game?.phase === "ended") {
+      stopAiAutoStep();
+      return;
+    }
+    void hostAiStep("auto").catch((error) => {
+      stopAiAutoStep();
+      statusMessage = localizeError(error instanceof Error ? error.message : "Action failed");
+      render();
+    });
+  }, 5000);
+  render();
+}
+
+function stopAiAutoStep(): void {
+  if (aiAutoHandle) {
+    window.clearInterval(aiAutoHandle);
+    aiAutoHandle = undefined;
+  }
 }
 
 async function loadDiagnostics(): Promise<void> {
@@ -1751,7 +1976,9 @@ async function copyWatchLinkForRoom(roomId: string): Promise<void> {
 
 function send(message: Record<string, unknown>): void {
   if (socket?.readyState === WebSocket.OPEN) {
+    submittingAction = true;
     socket.send(JSON.stringify(message));
+    renderSoon();
   } else {
     statusMessage = localizeError("Connection is not ready yet.");
     render();

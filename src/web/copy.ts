@@ -89,7 +89,10 @@ const actionStateLabels: Record<string, string> = {
   "Choose Lovers": "指定兩名戀人",
   "Cupid lovers": "丘比特指定戀人",
   Vote: "投票",
-  "Werewolf target": "狼人目標"
+  "Werewolf target": "狼人目標",
+  "Seer vision": "預言家查驗",
+  "Witch action": "女巫行動",
+  "Your vote": "你的投票"
 };
 
 const errorLabels: Record<string, string> = {
@@ -149,6 +152,13 @@ const errorLabels: Record<string, string> = {
   "No empty seats for AI players": "沒有空位可加入 AI 玩家。",
   "No AI players in this room": "這個房間沒有 AI 玩家。",
   "No AI action available for this phase": "目前階段沒有可執行的 AI 行動。",
+  "AI demo controls require dedicated host mode": "AI demo 控制只能在專職主持房間使用。",
+  "AI day chat is only available during discussion": "AI 發言只能在白天討論使用。",
+  "AI day ready is only available during discussion": "AI 準備只能在白天討論使用。",
+  "AI night action is only available during night phases": "AI 夜晚行動只能在夜晚階段使用。",
+  "AI vote is only available during voting": "AI 投票只能在投票階段使用。",
+  "AI reaction is only available during reaction phases": "AI 反應只能在反應階段使用。",
+  "Unsupported AI step type": "不支援的 AI 行動類型。",
   "Room reset by host": "房主已重設房間。",
   "Unauthenticated socket": "連線尚未驗證。",
   "Unknown seat": "未知座位。",

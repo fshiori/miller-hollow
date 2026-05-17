@@ -64,6 +64,8 @@ interface TokenRequest {
 
 interface HostSeatRequest extends TokenRequest {
   targetSeatId?: string;
+  stepType?: AiStepType;
+  mode?: "one" | "all";
 }
 
 interface InitializeRequest {
@@ -86,6 +88,16 @@ interface ClientMessage {
 interface RateBucket {
   count: number;
   resetAt: number;
+}
+
+type AiStepType = "auto" | "night_action" | "day_chat" | "day_ready" | "vote" | "reaction";
+
+interface AiStepSummary {
+  stepType: AiStepType;
+  phaseBefore: string;
+  phaseAfter: string;
+  actedSeatIds: string[];
+  skipped: Array<{ seatId: string; reason: string }>;
 }
 
 export class RoomObject implements DurableObject {
@@ -316,9 +328,16 @@ export class RoomObject implements DurableObject {
         this.afterGameMutation(room);
       } else if (action === "add-ai-players") {
         this.assertLobby(room);
+        this.assertDedicatedHostRoom(room);
         this.addAiPlayers(room);
       } else if (action === "ai-step") {
-        this.runAiStep(room);
+        this.assertDedicatedHostRoom(room);
+        const aiStep = this.runAiStep(room, normalizeAiStepType(body.stepType), body.mode === "all" ? "all" : "one");
+        room.updatedAt = Date.now();
+        await this.saveRoom(room);
+        this.logRoomEvent(room, "host_control", { action, hostSeatId: host.seatId, aiStep });
+        await this.broadcastRoom(room);
+        return json({ ...this.publicRoomView(room), aiStep });
       } else if (action === "reset-lobby") {
         if (room.status === "playing") {
           return json({ error: "Playing games cannot be reset" }, 409);
@@ -794,6 +813,12 @@ export class RoomObject implements DurableObject {
     }
   }
 
+  private assertDedicatedHostRoom(room: RoomState): void {
+    if (room.settings.hostMode !== "dedicated_host") {
+      throw new Error("AI demo controls require dedicated host mode");
+    }
+  }
+
   private kickSeat(room: RoomState, targetSeatId: string | undefined): void {
     if (!targetSeatId) throw new Error("Target seat is required");
     if (targetSeatId === room.hostSeatId) throw new Error("Host cannot kick themselves");
@@ -1017,7 +1042,7 @@ export class RoomObject implements DurableObject {
     await this.broadcastRoom(room);
   }
 
-  private runAiStep(room: RoomState): void {
+  private runAiStep(room: RoomState, requestedStepType: AiStepType, mode: "one" | "all"): AiStepSummary {
     if (!room.game || room.status !== "playing") {
       throw new Error("Game has not started");
     }
@@ -1026,85 +1051,192 @@ export class RoomObject implements DurableObject {
       throw new Error("No AI players in this room");
     }
     const beforePhase = room.game.phase;
-    const beforeRound = room.game.round;
-    let acted = 0;
+    const stepType = requestedStepType === "auto" ? this.recommendedAiStepType(room) : requestedStepType;
+    const actedSeatIds: string[] = [];
+    const skipped: AiStepSummary["skipped"] = [];
 
-    if (room.game.phase === "day_discussion") {
+    if (stepType === "day_chat") {
+      if (room.game.phase !== "day_discussion") {
+        throw new Error("AI day chat is only available during discussion");
+      }
       for (const seatId of aiSeatIds) {
-        if (!room.game?.alive[seatId]) continue;
-        if (!room.chatMessages.some((message) => message.seatId === seatId && message.id.startsWith(`ai-${beforeRound}-`))) {
-          this.addAiChat(room, seatId);
-          acted += 1;
+        if (!room.game.alive[seatId]) {
+          skipped.push({ seatId, reason: "dead" });
+          continue;
+        }
+        this.addAiChat(room, seatId);
+        actedSeatIds.push(seatId);
+      }
+      room.updatedAt = Date.now();
+      return this.aiStepSummary(stepType, beforePhase, room, actedSeatIds, skipped);
+    }
+
+    if (stepType === "day_ready") {
+      if (room.game.phase !== "day_discussion") {
+        throw new Error("AI day ready is only available during discussion");
+      }
+      for (const seatId of aiSeatIds) {
+        if (!room.game.alive[seatId]) {
+          skipped.push({ seatId, reason: "dead" });
+          continue;
         }
         const readySet = new Set(room.phaseInteraction.dayReadySeatIds);
         if (!readySet.has(seatId)) {
           readySet.add(seatId);
           room.phaseInteraction.dayReadySeatIds = [...readySet];
-          acted += 1;
+          actedSeatIds.push(seatId);
+        } else {
+          skipped.push({ seatId, reason: "already ready" });
         }
       }
       if (this.tryAdvanceDayDiscussion(room)) {
-        acted += 1;
         this.afterGameMutation(room);
       } else {
         room.updatedAt = Date.now();
       }
-      this.logRoomEvent(room, "ai_step", { phase: beforePhase, acted });
-      return;
+      return this.aiStepSummary(stepType, beforePhase, room, actedSeatIds, skipped);
     }
 
-    if (room.game.phase === "night_werewolves") {
+    if (stepType === "night_action") {
+      if (!isNightAiPhase(room.game.phase)) {
+        throw new Error("AI night action is only available during night phases");
+      }
+      if (room.game.phase !== "night_werewolves") {
+        for (const seatId of aiSeatIds) {
+          if (!room.game || room.game.phase !== beforePhase) break;
+          const command = this.aiCommandFor(room, seatId, "night_action");
+          if (!command) {
+            skipped.push({ seatId, reason: "no legal night action" });
+            continue;
+          }
+          room.game = applyCommand(room.game, command).state;
+          actedSeatIds.push(seatId);
+        }
+        if (!actedSeatIds.length) {
+          throw new Error("No AI action available for this phase");
+        }
+        this.afterGameMutation(room);
+        return this.aiStepSummary(stepType, beforePhase, room, actedSeatIds, skipped);
+      }
       const aiWerewolves = aiSeatIds.filter((seatId) => room.game?.alive[seatId] && room.game.roles[seatId] === "werewolf");
       if (aiWerewolves.length) {
         if (!room.phaseInteraction.werewolfTargetId) {
           const targetId = this.firstLegalAiTarget(room, aiWerewolves[0] as string);
           if (targetId) {
             room.phaseInteraction.werewolfTargetId = targetId;
-            acted += 1;
           }
         }
         const readySet = new Set(room.phaseInteraction.werewolfReadySeatIds);
         for (const seatId of aiWerewolves) {
           if (!readySet.has(seatId)) {
             readySet.add(seatId);
-            acted += 1;
+            actedSeatIds.push(seatId);
+          } else {
+            skipped.push({ seatId, reason: "already confirmed" });
           }
         }
         room.phaseInteraction.werewolfReadySeatIds = [...readySet];
         if (this.tryAdvanceWerewolves(room)) {
-          acted += 1;
           this.afterGameMutation(room);
         } else {
           room.updatedAt = Date.now();
         }
-        this.logRoomEvent(room, "ai_step", { phase: beforePhase, acted });
-        return;
+        return this.aiStepSummary(stepType, beforePhase, room, actedSeatIds, skipped);
       }
-    }
-
-    for (const seatId of aiSeatIds) {
-      if (!room.game || room.game.phase !== beforePhase) break;
-      const command = this.aiCommandFor(room, seatId);
-      if (!command) continue;
-      room.game = applyCommand(room.game, command).state;
-      if (command.type === "submit_vote" || command.type === "submit_sheriff_vote") {
-        this.resolveVoteIfComplete(room);
-      }
-      acted += 1;
-    }
-
-    if (!acted) {
       throw new Error("No AI action available for this phase");
     }
-    this.afterGameMutation(room);
-    this.logRoomEvent(room, "ai_step", { phase: beforePhase, acted });
+
+    if (stepType === "vote") {
+      if (room.game.phase !== "day_vote" && room.game.phase !== "sheriff_election") {
+        throw new Error("AI vote is only available during voting");
+      }
+      for (const seatId of aiSeatIds) {
+        if (!room.game || room.game.phase !== beforePhase) break;
+        const command = this.aiCommandFor(room, seatId, "vote");
+        if (!command) {
+          skipped.push({ seatId, reason: "no legal vote" });
+          continue;
+        }
+        room.game = applyCommand(room.game, command).state;
+        this.resolveVoteIfComplete(room);
+        actedSeatIds.push(seatId);
+        if (mode === "one") break;
+      }
+      if (!actedSeatIds.length) {
+        throw new Error("No AI action available for this phase");
+      }
+      this.afterGameMutation(room);
+      return this.aiStepSummary(stepType, beforePhase, room, actedSeatIds, skipped);
+    }
+
+    if (stepType === "reaction") {
+      if (room.game.phase !== "hunter_revenge" && room.game.phase !== "sheriff_succession") {
+        throw new Error("AI reaction is only available during reaction phases");
+      }
+      for (const seatId of aiSeatIds) {
+        if (!room.game || room.game.phase !== beforePhase) break;
+        const command = this.aiCommandFor(room, seatId, "reaction");
+        if (!command) {
+          skipped.push({ seatId, reason: "no legal reaction" });
+          continue;
+        }
+        room.game = applyCommand(room.game, command).state;
+        actedSeatIds.push(seatId);
+        if (mode === "one") break;
+      }
+      if (!actedSeatIds.length) {
+        throw new Error("No AI action available for this phase");
+      }
+      this.afterGameMutation(room);
+      return this.aiStepSummary(stepType, beforePhase, room, actedSeatIds, skipped);
+    }
+
+    throw new Error("Unsupported AI step type");
+  }
+
+  private recommendedAiStepType(room: RoomState): AiStepType {
+    if (!room.game) throw new Error("Game has not started");
+    if (room.game.phase === "day_discussion") {
+      const livingAi = room.seats.filter((seat) => seat.controller === "ai" && seat.nickname && room.game?.alive[seat.seatId]);
+      const hasUnreadyAi = livingAi.some((seat) => !room.phaseInteraction.dayReadySeatIds.includes(seat.seatId));
+      return hasUnreadyAi && !this.aiSpokeThisDiscussion(room) ? "day_chat" : "day_ready";
+    }
+    if (room.game.phase === "day_vote" || room.game.phase === "sheriff_election") return "vote";
+    if (room.game.phase === "hunter_revenge" || room.game.phase === "sheriff_succession") return "reaction";
+    if (isNightAiPhase(room.game.phase)) return "night_action";
+    throw new Error("No AI action available for this phase");
+  }
+
+  private aiSpokeThisDiscussion(room: RoomState): boolean {
+    if (!room.game) return false;
+    const prefix = `ai-${room.game.round}-${room.phaseInteraction.phase ?? room.game.phase}-`;
+    return room.chatMessages.some((message) => message.id.startsWith(prefix));
+  }
+
+  private aiStepSummary(
+    stepType: AiStepType,
+    phaseBefore: string,
+    room: RoomState,
+    actedSeatIds: string[],
+    skipped: AiStepSummary["skipped"]
+  ): AiStepSummary {
+    if (!actedSeatIds.length) {
+      throw new Error("No AI action available for this phase");
+    }
+    return {
+      stepType,
+      phaseBefore,
+      phaseAfter: room.game?.phase ?? "none",
+      actedSeatIds,
+      skipped
+    };
   }
 
   private addAiChat(room: RoomState, seatId: string): void {
     if (!room.game) return;
     const seat = room.seats.find((candidate) => candidate.seatId === seatId);
     room.chatMessages.push({
-      id: `ai-${room.game.round}-${Date.now()}-${room.chatMessages.length}`,
+      id: `ai-${room.game.round}-${room.phaseInteraction.phase ?? room.game.phase}-${Date.now()}-${room.chatMessages.length}`,
       seatId,
       nickname: seat?.nickname ?? seatId,
       message: this.aiDiscussionLine(room, seatId),
@@ -1115,23 +1247,38 @@ export class RoomObject implements DurableObject {
   private aiDiscussionLine(room: RoomState, seatId: string): string {
     const seat = room.seats.find((candidate) => candidate.seatId === seatId);
     const name = seat?.nickname ?? "AI";
-    return `${name}：我準備好進入投票。`;
+    const variants = ["我先聽大家怎麼說。", "目前資訊不多，我會觀察投票。", "我傾向先找發言矛盾的人。", "等一下投票我會選一個目標。"];
+    const index = room.chatMessages.filter((message) => message.seatId === seatId).length % variants.length;
+    return `${name}：${variants[index]}`;
   }
 
-  private aiCommandFor(room: RoomState, seatId: string): GameCommand | undefined {
-    if (!room.game || !room.game.alive[seatId]) {
+  private aiCommandFor(room: RoomState, seatId: string, stepType: "night_action" | "vote" | "reaction"): GameCommand | undefined {
+    if (!room.game) return undefined;
+    if (!room.game.alive[seatId]) {
       const reaction = room.game?.pendingReactions[0];
-      if (reaction?.type === "hunter_revenge" && reaction.hunterId === seatId) {
+      if (stepType === "reaction" && reaction?.type === "hunter_revenge" && reaction.hunterId === seatId) {
         const targetId = this.firstLegalAiTarget(room, seatId);
         return { type: "submit_hunter_shot", actorId: seatId, ...(targetId ? { targetId } : {}) };
       }
-      if (reaction?.type === "sheriff_succession" && reaction.fromId === seatId) {
+      if (stepType === "reaction" && reaction?.type === "sheriff_succession" && reaction.fromId === seatId) {
         const targetId = this.firstLegalAiTarget(room, seatId);
         return { type: "submit_sheriff_successor", actorId: seatId, ...(targetId ? { targetId } : {}) };
       }
       return undefined;
     }
     const view = toPrivatePlayerView(room.game, seatId);
+    if (stepType === "vote") {
+      if (view.legalActions.includes("submit_sheriff_vote")) {
+        return { type: "submit_sheriff_vote", actorId: seatId, targetId: this.firstLegalAiTarget(room, seatId) ?? "abstain" };
+      }
+      if (view.legalActions.includes("submit_vote")) {
+        return { type: "submit_vote", actorId: seatId, targetId: this.firstLegalAiTarget(room, seatId) ?? "abstain" };
+      }
+      return undefined;
+    }
+    if (stepType === "reaction") {
+      return undefined;
+    }
     if (view.legalActions.includes("submit_thief_choice") && view.legalRoleChoices?.[0]) {
       return { type: "submit_thief_choice", actorId: seatId, role: view.legalRoleChoices[0] as import("../engine").Role };
     }
@@ -1147,12 +1294,6 @@ export class RoomObject implements DurableObject {
         actorId: seatId,
         ...(view.pendingWerewolfTarget && view.witchPotions.saveAvailable ? { saveTargetId: view.pendingWerewolfTarget } : {})
       };
-    }
-    if (view.legalActions.includes("submit_sheriff_vote")) {
-      return { type: "submit_sheriff_vote", actorId: seatId, targetId: this.firstLegalAiTarget(room, seatId) ?? "abstain" };
-    }
-    if (view.legalActions.includes("submit_vote")) {
-      return { type: "submit_vote", actorId: seatId, targetId: this.firstLegalAiTarget(room, seatId) ?? "abstain" };
     }
     return undefined;
   }
@@ -1699,4 +1840,18 @@ function json(data: unknown, status = 200): Response {
       "access-control-allow-headers": "content-type"
     }
   });
+}
+
+function normalizeAiStepType(value: unknown): AiStepType {
+  if (value === "auto" || value === undefined) return "auto";
+  if (value === "night_action" || value === "ai_night_action") return "night_action";
+  if (value === "day_chat" || value === "ai_day_chat") return "day_chat";
+  if (value === "day_ready" || value === "ai_day_ready") return "day_ready";
+  if (value === "vote" || value === "ai_vote") return "vote";
+  if (value === "reaction" || value === "ai_reaction") return "reaction";
+  throw new Error("Unsupported AI step type");
+}
+
+function isNightAiPhase(phase: string): boolean {
+  return phase === "thief_choice" || phase === "night_cupid" || phase === "night_werewolves" || phase === "night_seer" || phase === "night_witch";
 }

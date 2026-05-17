@@ -17,6 +17,7 @@ May include:
 - Seat controller labels, including AI test-player seats.
 - Public chat messages.
 - Start eligibility.
+- Public waiting-state, phase timeline, and rules-reference data derived from public fields.
 - Endgame reveal only after `phase === "ended"`.
 
 Must not include:
@@ -54,7 +55,7 @@ May include:
 - Werewolf private chat, proposed target, and Werewolf ready seat ids only for living Werewolves during Werewolf night.
 - Day ready seat ids and counts for living players during day discussion.
 
-AI-controlled seats use the same public and private view contracts as human seats. The server may submit legal actions for AI seats through host-authenticated test controls, but that command must not add hidden role data to public, spectator, or player-host views.
+AI-controlled seats use the same public and private view contracts as human seats. The server may submit legal actions for AI seats through dedicated-host demo controls, but that command must not add hidden role data to public, spectator, or player-host views.
 
 Must not include another player's private-only view.
 
@@ -69,6 +70,7 @@ Spectators must never receive:
 - Token hashes.
 - Private role data before endgame.
 - Action controls.
+- Dedicated-host AI demo controls.
 
 ## Dedicated Host Console View
 
@@ -91,6 +93,7 @@ May include:
 - Resolved vote results.
 - Seer results and night action summary.
 - Witch potion state for app-basic rooms.
+- AI demo step summaries returned by dedicated-host commands.
 
 Must not include:
 
@@ -107,3 +110,5 @@ Dedicated host console sockets must not accept player actions.
 ## Player Host Boundary
 
 Player-host rooms use the same public and private player views as every other player. A player-host may administer the room, but must not receive observer tickets, observer state, observer sockets, full role lists, live vote maps, or other hidden-information console payloads before endgame.
+
+Player-host rooms must not expose AI demo controls because those controls are intended for dedicated-host testing and observation.

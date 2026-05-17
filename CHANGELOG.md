@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0 - Player Experience And Demo Pacing
+
+### Added
+
+- V6.3 design and implementation documents for paced AI demo controls.
+- V7 design and implementation documents for formal player experience work.
+- Explicit AI demo step types for night actions, day chat, day readiness, voting, reactions, and auto mode.
+- Dedicated-host AI demo controls with single-step buttons and a browser-side 5-second auto-step loop.
+- Player-facing waiting-state panel, phase timeline, and compact room rules reference.
+- Browser smoke assertions for rules reference, phase timeline, waiting-state copy, and AI demo control isolation.
+
+### Changed
+
+- AI day chat no longer also readies players or advances directly to voting.
+- AI demo controls are restricted to dedicated-host rooms.
+- Player-host rooms no longer show AI demo controls.
+- Player actions show a transient submitting state while waiting for server confirmation.
+- App version reports `0.7.0`.
+
 ## 0.6.2 - Hosted Game Flow
 
 ### Added

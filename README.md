@@ -1,12 +1,12 @@
 # Miller Hollow
 
-Basic Edition V6.2 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
+Basic Edition V7 implementation for 8-18 player online Werewolves of Miller's Hollow rooms on Astro, Cloudflare Workers, and Durable Objects.
 
 The player-facing browser UI is Traditional Chinese. Public API fields, internal ids, and developer diagnostics remain English for compatibility.
 
 This is an unofficial fan implementation and is not affiliated with the original game publisher or rights holders.
 
-V6.1 keeps internal ids stable while aligning player-facing terminology and implemented rules with the official rulebook. The audit lives in `docs/superpowers/rules/2026-05-16-miller-hollow-official-rules-audit.md`. V6.2 focuses on hosted game flow: discussion readiness, vote reveal, Werewolf night chat boundaries, system log follow behavior, and AI test-player progression.
+V6.1 keeps internal ids stable while aligning player-facing terminology and implemented rules with the official rulebook. The audit lives in `docs/superpowers/rules/2026-05-16-miller-hollow-official-rules-audit.md`. V6.2 focused on hosted game flow. V6.3 split AI demo pacing into visible host steps, and V7 adds player-facing waiting states, phase timeline, rules quick reference, reconnect affordances, and mobile-oriented game layout refinements.
 
 ## Commands
 
@@ -14,8 +14,8 @@ V6.1 keeps internal ids stable while aligning player-facing terminology and impl
 - `npm run typecheck` runs TypeScript checks.
 - `npm test` runs engine unit tests.
 - `npm run build` builds the browser assets and typechecks the Worker.
-- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, custom Thief/Cupid setup, V5 roleflow, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, player-host observer rejection, dedicated-host observer access, dedicated-host AI test-player progression, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, day readiness, WebSocket night actions, day chat, vote resolution, and public weighted vote reveal.
-- `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus spectator views through create, join, watch, reconnect, V5 roleflow start, Seer action, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, voting, weighted vote reveal, Traditional Chinese UI assertions, player-host hidden-info console rejection, and responsive screenshots including an 18-seat lobby.
+- `npm run smoke:v1` starts Wrangler and exercises every official 8-18 player preset, app-basic compatibility presets, custom Thief/Cupid setup, V5 roleflow, room capacity, reconnect tokens, invalid-token rejection, hidden-info filtering, player-host observer rejection, dedicated-host observer access, dedicated-host AI test-player progression with split demo steps, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, day readiness, WebSocket night actions, day chat, vote resolution, and public weighted vote reveal.
+- `npm run smoke:browser` starts Wrangler and drives isolated Chromium browser contexts plus spectator views through create, join, watch, reconnect, V5 roleflow start, Seer action, Werewolf private chat/target readiness, Sheriff election, Hunter revenge, voting, weighted vote reveal, rules reference, phase timeline, waiting-state copy, Traditional Chinese UI assertions, player-host hidden-info console rejection, AI demo control isolation, and responsive screenshots including an 18-seat lobby.
 - `npm run smoke:remote` validates the deployed endpoint without waiting for production-length day timers. Override with `MILLER_HOLLOW_BASE_URL=https://example.workers.dev` and `MILLER_HOLLOW_PRESET_ID=official_basic_18` or `official_roleflow_8`.
 - `npm run deploy:versioned` deploys with `MILLER_HOLLOW_BUILD_SHA` set from the current git commit.
 - `npm run deploy:dry-run` validates the Worker bundle and Cloudflare configuration without publishing.
@@ -63,7 +63,9 @@ Rooms have an explicit trust mode. The default `player_host` mode makes the room
 
 Player-hosts can copy player and spectator links, lock the lobby, toggle spectator access, kick lobby seats, transfer host, inspect redacted room diagnostics, open Sheriff election during day discussion, fast-forward phases, and reset non-playing rooms. Players mark ready before the host can start. Dedicated hosts can use the same administration controls, but do not occupy a player seat and cannot transfer hosting to a player.
 
-Hosts may fill empty lobby seats with AI test players and trigger one AI action step at a time during a game. AI players are a testing/demo tool: they choose legal actions, send short Traditional Chinese discussion messages, ready during day discussion, vote, and advance role actions without exposing hidden state through player-host or spectator views.
+Dedicated hosts may fill empty lobby seats with AI test players and trigger paced AI demo steps during a game. AI players are a testing/demo tool: host controls separate AI night actions, public day chat, day readiness, voting, reactions, and 5-second auto-step. AI demo controls are hidden from player-host rooms and do not expose hidden state through player-host or spectator views.
+
+Player rooms include a waiting-state panel, public phase timeline, and compact room rules reference so players can see what the room is waiting for, what setup is active, and what public phase comes next without leaving the game.
 
 Spectators can watch from `/room/:roomId/watch` without occupying a player seat. Spectator sockets receive public room views only and never receive player private views.
 

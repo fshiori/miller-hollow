@@ -35,6 +35,8 @@ try {
   await pages[0].locator('#create-form button[type="submit"]').click();
   await pages[0].getByTestId("room-id").waitFor();
   await pages[0].locator(".room-meta").filter({ hasText: "18 人自定義進階局" }).waitFor();
+  await pages[0].getByTestId("rules-reference").filter({ hasText: "房間規則" }).waitFor();
+  await pages[0].getByTestId("phase-timeline").filter({ hasText: "大廳" }).waitFor();
   await pages[0].locator(".seat").nth(17).waitFor();
   await pages[0].screenshot({ path: ".wrangler/browser-smoke-desktop-lobby-18.png", fullPage: true });
   await pages[0].locator("#leave-button").click();
@@ -46,6 +48,8 @@ try {
   await pages[0].locator('#create-form button[type="submit"]').click();
   await pages[0].getByTestId("room-id").waitFor();
   await pages[0].locator(".room-meta").filter({ hasText: "專職主持可查看隱藏資訊" }).waitFor();
+  await pages[0].locator(".ai-demo-tools").filter({ hasText: "AI Demo" }).waitFor();
+  await pages[0].locator("#add-ai-players-button").filter({ hasText: "補滿 AI" }).waitFor();
   await pages[0].getByRole("link", { name: "主持後台" }).click();
   await pages[0].locator("body").filter({ hasText: "主持後台" }).waitFor();
   await pages[0].locator("body").filter({ hasText: "等待遊戲開始" }).waitFor();
@@ -60,6 +64,7 @@ try {
   await pages[0].getByTestId("room-id").waitFor();
   const roomId = (await pages[0].getByTestId("room-id").textContent())?.trim();
   assert(roomId, "room id did not render after create");
+  assert((await pages[0].locator("#add-ai-players-button").count()) === 0, "player-host room exposed AI demo controls");
   await pages[0].locator("#lock-button").click();
   await pages[0].locator("#lock-button").filter({ hasText: "解鎖" }).waitFor();
   await pages[0].locator("#lock-button").click();
@@ -91,6 +96,8 @@ try {
   await pages[0].locator("#start-button:not([disabled])").waitFor();
   await pages[0].locator("#start-button").click();
   await waitForAnyPagePhase(pages, "night_seer");
+  await pages[0].getByTestId("waiting-state").waitFor({ timeout: 10_000 });
+  await pages[0].getByTestId("phase-timeline").filter({ hasText: "預言家夜晚" }).waitFor({ timeout: 10_000 });
   await waitForRoles(pages);
   await assertLocalizedRoles(pages);
   await waitForAnyPagePhase([spectatorPage], "night_seer");
@@ -167,7 +174,7 @@ try {
 
   await Promise.all(contexts.map((context) => context.close()));
   await spectatorContext.close();
-  console.log("Browser V6.2 smoke passed");
+  console.log("Browser V7 smoke passed");
 } finally {
   if (browser) await browser.close();
   try {

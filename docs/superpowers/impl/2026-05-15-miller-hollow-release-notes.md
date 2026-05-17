@@ -4,6 +4,46 @@ Date: 2026-05-15
 
 This document is the fast human-readable version history. `CHANGELOG.md` remains the package-level changelog; this file summarizes what each completed milestone means in product terms.
 
+## 0.7.0 - V6.3/V7 Demo Pacing And Player Experience
+
+Status:
+
+- Implemented locally.
+- Completes the V6.3 AI demo pacing plan and the V7 player-experience plan.
+- No new roles.
+
+Completed:
+
+- Added V6.3 and V7 design / implementation documents.
+- Split AI demo progression into explicit host step types:
+  - night action
+  - day chat
+  - day ready
+  - vote
+  - reaction
+  - auto
+- AI day chat no longer also marks players ready or advances to voting.
+- Added dedicated-host AI demo controls and a browser-side 5-second auto-step loop.
+- Restricted AI demo controls to dedicated-host rooms.
+- Added player-facing waiting-state panel.
+- Added public phase timeline.
+- Added compact room rules reference.
+- Added transient action submitting state.
+- Added reconnect retry affordance for reconnecting player sessions.
+- Updated API smoke for split AI demo flow.
+- Updated browser smoke for rules reference, phase timeline, waiting-state copy, and AI demo control isolation.
+- Updated README and changelog.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
+- `npm run smoke:v1`
+- `npm run smoke:browser`
+- `npm run secrets:check`
+- `npm run deploy:dry-run`
+
 ## 0.6.2 - V6.2 Hosted Game Flow
 
 Status:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { labelRole, localizeEvent } from "../../src/web/copy";
+import { labelActionState, labelRole, localizeError, localizeEvent } from "../../src/web/copy";
 
 describe("web copy localization", () => {
   it("localizes public timeline events", () => {
@@ -15,5 +15,12 @@ describe("web copy localization", () => {
     expect(labelRole("villager")).toBe("普通村民");
     expect(labelRole("Ordinary Townsfolk")).toBe("普通村民");
     expect(labelRole("seer")).toBe("預言家");
+  });
+
+  it("localizes V7 waiting states and AI demo errors", () => {
+    expect(labelActionState("Seer vision")).toBe("預言家查驗");
+    expect(labelActionState("Witch action")).toBe("女巫行動");
+    expect(labelActionState("Your vote")).toBe("你的投票");
+    expect(localizeError("AI demo controls require dedicated host mode")).toBe("AI demo 控制只能在專職主持房間使用。");
   });
 });

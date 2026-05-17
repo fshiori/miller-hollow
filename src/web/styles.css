@@ -438,6 +438,16 @@ code {
   grid-template-columns: 1fr 1fr;
 }
 
+.ai-demo-tools {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 12px;
+  padding: 10px;
+  border: 1px solid rgba(216, 173, 97, 0.22);
+  border-radius: 8px;
+  background: rgba(8, 12, 16, 0.22);
+}
+
 .mini {
   min-height: 28px;
   padding: 0 8px;
@@ -462,6 +472,56 @@ code {
   background: rgba(216, 173, 97, 0.14);
   color: #ffe3a3;
   font-weight: 800;
+}
+
+.status-note,
+.rules-reference {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(231, 204, 151, 0.14);
+  border-radius: 8px;
+  background: rgba(8, 12, 16, 0.26);
+  color: #ead9b8;
+  font-weight: 800;
+}
+
+.status-note span {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--gold);
+}
+
+.phase-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.phase-timeline span {
+  padding: 5px 8px;
+  border: 1px solid rgba(231, 204, 151, 0.14);
+  border-radius: 999px;
+  color: #c9b892;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.phase-timeline .current {
+  border-color: rgba(216, 173, 97, 0.55);
+  background: rgba(216, 173, 97, 0.14);
+  color: #ffe3a3;
+}
+
+.rules-reference summary {
+  cursor: pointer;
+  color: var(--gold);
+}
+
+.rules-reference p {
+  margin-top: 8px;
+  color: #d8cfb8;
+  overflow-wrap: anywhere;
 }
 
 .phase-panel {

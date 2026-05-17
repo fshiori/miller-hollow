@@ -282,7 +282,7 @@ try {
   assert(latestVoteResult.tally[target] === votingPlayers.length, "vote result tally did not include deliberate votes");
   const spectatorState = await spectatorStateView(room.roomId);
   assert((spectatorState.game.voteResults ?? []).length >= 1, "spectator state did not include vote results after vote resolution");
-  console.log("V6.2 smoke passed");
+  console.log("V7 smoke passed");
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");
@@ -437,20 +437,27 @@ async function smokeDedicatedHostAiFlow() {
   state = await get(`/api/rooms/${room.roomId}/state`);
   assert(!publicStateHasRoles(state), "AI public state leaked roles before endgame");
 
-  let sawDiscussion = false;
-  let sawVote = false;
-  for (let step = 0; step < 12; step += 1) {
-    state = await post(`/api/rooms/${room.roomId}/host/ai-step`, { seatId: "dedicated-host", token: room.hostToken });
-    sawDiscussion ||= state.game?.phase === "day_discussion";
-    sawVote ||= state.game?.phase === "day_vote";
-    if ((state.game?.voteResults ?? []).length > 0) break;
-  }
+  state = await post(`/api/rooms/${room.roomId}/host/ai-step`, { seatId: "dedicated-host", token: room.hostToken, stepType: "night_action" });
+  assert(state.aiStep?.stepType === "night_action", "AI night step summary missing");
+  assert(state.game?.phase === "night_werewolves", "AI Seer action did not advance to Werewolves");
+  state = await post(`/api/rooms/${room.roomId}/host/ai-step`, { seatId: "dedicated-host", token: room.hostToken, stepType: "night_action" });
+  assert(state.game?.phase === "day_discussion", "AI Werewolf action did not advance to discussion");
+
+  const chatCountBefore = state.chatMessages.length;
+  state = await post(`/api/rooms/${room.roomId}/host/ai-step`, { seatId: "dedicated-host", token: room.hostToken, stepType: "day_chat" });
+  assert(state.game?.phase === "day_discussion", "AI day chat advanced the phase");
+  assert(state.chatMessages.length > chatCountBefore, "AI day chat did not add public messages");
+  assert((state.phaseInteraction?.dayReadyCount ?? 0) === 0, "AI day chat also readied players");
+
+  state = await post(`/api/rooms/${room.roomId}/host/ai-step`, { seatId: "dedicated-host", token: room.hostToken, stepType: "day_ready" });
+  assert(state.game?.phase === "day_vote", "AI day ready did not advance to vote");
+  assert((state.game?.voteResults ?? []).length === 0, "AI day ready revealed votes before voting");
+
+  state = await post(`/api/rooms/${room.roomId}/host/ai-step`, { seatId: "dedicated-host", token: room.hostToken, stepType: "vote", mode: "all" });
 
   state = await get(`/api/rooms/${room.roomId}/state`);
-  assert(sawDiscussion, "AI flow did not reach day discussion");
-  assert(sawVote || (state.game?.voteResults ?? []).length > 0, "AI flow did not reach voting");
   assert((state.game?.voteResults ?? []).length > 0, "AI flow did not reveal a resolved vote");
-  assert(state.chatMessages.some((message) => message.message.includes("準備好進入投票")), "AI flow did not emit day discussion chat");
+  assert(state.chatMessages.some((message) => message.message.includes("AI")), "AI flow did not emit day discussion chat");
   const observer = await observerState(room.roomId, { seatId: "dedicated-host", token: room.hostToken });
   assert(observer.observer?.players?.every((player) => player.role), "AI observer did not reveal roles to dedicated host");
 }
